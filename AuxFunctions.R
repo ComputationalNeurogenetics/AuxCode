@@ -1,5 +1,14 @@
 # Some additional functions ----
 
+smooth.TFz.sd.rand <- function(TFz, cell.order, f=.5, rand.n=10){
+  rand.sd<-sapply(1:rand.n, function(r){
+    sd(lowess(y = TFz, x = sample(x = cell.order, size = length(cell.order)), f=f)$y)
+  })
+  return(rand.sd)
+}
+
+
+
 Find_TF_Marker_associations <- function(motifs, markers, db.name, adj.p.value = 0.05){
   # Checking requirements ----
   require(enrichR)
@@ -16,7 +25,7 @@ Find_TF_Marker_associations <- function(motifs, markers, db.name, adj.p.value = 
   TF.names.from.motifs <- gsub(pattern = "-MA.*", x = motifs,replacement = "")
   
   # Extract TF names from enrichments ----
-  TF.names.from.enrichments <- pull(enriched.tb.filt,Term)
+  TF.names.from.enrichments <- gsub(pattern = "\\s+.*", x = pull(enriched.tb.filt,Term), replacement = "")
   
   # Intersect names ----
   intersected.TF.names <- intersect(TF.names.from.enrichments,TF.names.from.motifs)
@@ -24,7 +33,9 @@ Find_TF_Marker_associations <- function(motifs, markers, db.name, adj.p.value = 
   # Pull out genes present both in markers and enriched among the downstream target genes of each intersected TF ----
   program.genes <- lapply(intersected.TF.names, function(term){
     # Pulling out genes of each term from the intersect
-    genes.downstream <- strsplit(x = pull(filter(enriched.tb.filt, Term==term), Genes),split=";")[[1]] 
+    all.terms <- pull(enriched.tb.filt,Term)
+    term.i <- grep(pattern = term, x = all.terms)
+    genes.downstream <- strsplit(x = pull(enriched.tb.filt[term.i,], Genes),split=";")[[1]] 
     # Intersecting genes downstream with markers
     genes.for.program <- intersect(genes.downstream,toupper(markers))
     # Add TF itself to the program
@@ -35,12 +46,12 @@ Find_TF_Marker_associations <- function(motifs, markers, db.name, adj.p.value = 
   return(list(programs=program.genes, db.name=db.name, adj.p.value.threshold = adj.p.value))
 }
 
-Fetch_Enrichments <- function(genes,db.name){
+Fetch_Enrichments <- function(genes,db.name, adj.p.value = 0.05){
   dbs <- listEnrichrDbs()
   if (is.null(dbs)) websiteLive <- FALSE else websiteLive <- TRUE
   if (websiteLive) {
     enriched <- enrichr(genes, db.name)
-    enriched <- lapply(enriched, as_tibble)
+    enriched <- lapply(enriched, function(e){filter(as_tibble(e),Adjusted.P.value <= adj.p.value)})
   }
   enriched
 }
@@ -55,6 +66,20 @@ search_replace <- function(v,replacement){
     }
   })
   return(unlist(corrected, use.names=FALSE))
+}
+
+motif.to.geneName <- function(motif){
+  gene.part <- strsplit(motif,split="-MA")[[1]][1]
+  if (length(grep(pattern="::", gene.part)) == 0){
+    # Strip (ver something) away
+    gene.part <- gsub(pattern = "\\(.+\\)", x = gene.part, replacement = "")
+    return(gene.part)
+  } else {
+    genes.part <- strsplit(gene.part,split = "::")[[1]]
+     # Strip (ver something) away
+    genes.part <- gsub(pattern = "\\(.+\\)", x = genes.part, replacement = "")
+    return(genes.part)  
+    }
 }
 
 
