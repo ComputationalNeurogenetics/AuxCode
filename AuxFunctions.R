@@ -1,5 +1,7 @@
 # Some additional functions ----
 
+# Function to transform separate txt files after MACS2 into R object to be passed then into Seurat/Signac. Note this is extremely
+# IO heacy operation, run with fast storage
 peaks_to_matrix <- function(sample.name = sample.name, path = path){
 # Script to generate counts DF for from separate txt files for Seurat based pipeline downstream
 # Recommended to be run somewhere with very fast filesystem
