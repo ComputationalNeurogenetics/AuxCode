@@ -1,6 +1,60 @@
 # Some additional functions ----
 
-smooth.TFz.sd.rand <- function(TFz, cell.order, f=.5, rand.n=10){
+peaks_to_matrix <- function(sample.name = sample.name, path = path){
+# Script to generate counts DF for from separate txt files for Seurat based pipeline downstream
+# Recommended to be run somewhere with very fast filesystem
+
+library(plyr)
+library(data.table)
+
+# Sample name
+sample.name <- sample.name
+
+#' Read new peak count data in
+path <- path
+files <- list.files(path,pattern = "\\.txt$")
+length(files)
+
+#' Assuming tab separated values with a header    
+datalist <- llply(files, function(x)fread(paste0(path,x))$V4, .progress='text') 
+datafr <- do.call("cbind", datalist)
+
+# Separating cell barcodes from bam filenames to be used as observation (column) names. Not perhaps the most elegant solution but it works.
+barcodes <- substr(gsub(pattern='^TAG_CB_', replacement='', x=sapply(strsplit(files,'\\.'),'[', 1)),start=0,stop=16)
+colnames(datafr) <- barcodes
+
+saveRDS(datafr, paste(sample.name,"_CountsDF.Rds",sep=""))
+}
+
+# This is from Staija lab vignette https://satijalab.org/seurat/v4.0/weighted_nearest_neighbor_analysis.html
+topTFs <- function(celltype, padj.cutoff = 1e-2) {
+  ctmarkers_rna <- dplyr::filter(
+    markers_rna, RNA.group == celltype, RNA.padj < padj.cutoff, RNA.logFC > 0) %>% 
+    arrange(-RNA.auc)
+  ctmarkers_motif <- dplyr::filter(
+    markers_motifs, motif.group == celltype, motif.padj < padj.cutoff, motif.logFC > 0) %>% 
+    arrange(-motif.auc)
+  top_tfs <- inner_join(
+    x = ctmarkers_rna[, c(2, 11, 6, 7)], 
+    y = ctmarkers_motif[, c(2, 1, 11, 6, 7)], by = "gene"
+  )
+  top_tfs$avg_auc <- (top_tfs$RNA.auc + top_tfs$motif.auc) / 2
+  top_tfs <- arrange(top_tfs, -avg_auc)
+  return(top_tfs)
+}
+
+
+create_dt <- function(x){
+  DT::datatable(x,
+                extensions = 'Buttons',
+                options = list(dom = 'Blfrtip',
+                               buttons = c('copy', 'csv', 'excel', 'pdf'),
+                               lengthMenu = list(c(10,25,50,-1),
+                                                 c(10,25,50,"All"))))
+}
+
+
+smooth.TFz.sd.rand <- function(TFz, cell.order, f=2/3, rand.n=10){
   rand.sd<-sapply(1:rand.n, function(r){
     sd(lowess(y = TFz, x = sample(x = cell.order, size = length(cell.order)), f=f)$y)
   })
