@@ -1,5 +1,10 @@
 # Some additional functions ----
 
+list2df_tibble <- function(x) {
+  tmp <- purrr::map(x, tibble::as_tibble)
+  dplyr::bind_rows(tmp, .id = "name")
+}
+
 # Function to transform separate txt files after MACS2 into R object to be passed then into Seurat/Signac. Note this is extremely
 # IO heacy operation, run with fast storage
 peaks_to_matrix <- function(sample.name = sample.name, path = path){
