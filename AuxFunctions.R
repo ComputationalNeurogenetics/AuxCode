@@ -1,5 +1,15 @@
 # Some additional functions ----
 
+fit.GAM <- function(rna,p.time){
+  # Fit GAM for each gene using pseudotime as independent variable.
+  t <- p.time
+  gam.pval <- apply(rna, 1, function(z){
+    d <- data.frame(z=z, t=t)
+    tmp <- gam(z ~ lo(t), data=d)
+    summary(tmp)[4][[1]][1,5]
+  })
+}
+
 list2df_tibble <- function(x) {
   tmp <- purrr::map(x, tibble::as_tibble)
   dplyr::bind_rows(tmp, .id = "name")
