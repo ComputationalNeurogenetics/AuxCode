@@ -1,5 +1,59 @@
 # Some additional functions ----
 
+convert_feature_identity <- function(object, assay, features, feature.format = "symbol") {
+  
+  #' Converts ENS ID -> gene symbol and vice versa 
+  #' Returns a vector of length(features) of either matches or NAs
+  
+  # Protective tests
+  if (!any(feature.format %in% c("ens", "symbol"))) {
+    stop("Feature format should be a sting: either 'symbol' or 'ens'")
+  }
+  if (length(features) == 0) {
+    stop("No features found in argument 'features'")
+  }
+  if (feature.format == "ens" && !all(grepl("*ENS", features))) {
+    stop("Found non-ENS ID for argument feature format 'ens'")
+  }
+  if (feature.format == "symbol" & any(grepl("*ENS", features))) {
+    stop("Found ENS ID for argument feature format 'symbol'")
+  }
+  
+  # Diverging execution: case if provided features are ENSEBL IDs => conversion to symbols
+  if (feature.format == "ens") {
+    
+    object.features <- object[[assay]][[]] %>% 
+      rownames_to_column(var = "gene_id") %>%
+      as_tibble() %>%
+      dplyr::select("gene_id", "feature_symbol") %>% 
+      filter(gene_id %in% features)
+    
+    match.index <- match(features, object.features$gene_id, nomatch = NA)
+    v.out <- sapply(match.index, function (i) { ifelse(is.na(i), NA, object.features$feature_symbol[i])})
+    
+    sprintf("Instance: Found matching for %d features out of total %d provided features", sum(!is.na(v.out)), length(features)) %>% 
+      print()
+    
+    return (v.out)
+    
+  }
+  
+  # Case: otherwise provided symbols => conversion to ENS IDs
+  object.features <- object[[assay]][[]] %>% 
+    rownames_to_column(var = "gene_id") %>%
+    as_tibble() %>%
+    dplyr::select("gene_id", "feature_symbol") %>% 
+    filter(feature_symbol %in% features)
+  
+  match.index <- match(features, object.features$feature_symbol, nomatch = NA)
+  v.out <- sapply(match.index, function (i) { ifelse(is.na(i), NA, object.features$gene_id[i])})
+  
+  sprintf("Instance: Found matching for %d features out of total %d provided features", sum(!is.na(v.out)), length(features)) %>% 
+    print()
+  
+  return (v.out)
+}
+
 fit.GAM <- function(rna,p.time){
   # Fit GAM for each gene using pseudotime as independent variable.
   t <- p.time
