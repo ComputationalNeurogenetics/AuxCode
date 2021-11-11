@@ -1,5 +1,204 @@
 # Some additional functions ----
 
+# RenameGenesSeurat  ------------------------------------------------------------------------------------
+RenameGenesSeurat <- function(obj = ls.Seurat[[i]], newnames = HGNC.updated[[i]]$Suggested.Symbol) { # Replace gene names in different slots of a Seurat object. Run this before integration. Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.
+  print("Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.")
+  obj[['RNA_name']] <- obj[['RNA']]
+  RNA <- obj@assays$RNA_name
+  
+  if (nrow(RNA) == length(newnames)) {
+    if (length(RNA@counts)) RNA@counts@Dimnames[[1]]            <- newnames
+    if (length(RNA@data)) RNA@data@Dimnames[[1]]                <- newnames
+    if (length(RNA@scale.data)) RNA@scale.data@Dimnames[[1]]    <- newnames
+  } else {"Unequal gene sets: nrow(RNA) != nrow(newnames)"}
+  obj@assays$RNA_name <- RNA
+  return(obj)
+}
+# RenameGenesSeurat(obj = SeuratObj, newnames = HGNC.updated.genes)
+
+# 
+# LinkPeaksId <- function (object, peak.assay, expression.assay, expression.slot = "data", 
+#                          gene.coords = NULL, distance = 5e+05, min.distance = NULL, 
+#                          min.cells = 10, method = "pearson", genes.use = NULL, n_sample = 200, 
+#                          pvalue_cutoff = 0.05, score_cutoff = 0.05, verbose = TRUE) 
+# {
+#   if (!inherits(x = object[[peak.assay]], what = "ChromatinAssay")) {
+#     stop("The requested assay is not a ChromatinAssay")
+#   }
+#   if (!is.null(x = min.distance)) {
+#     if (!is.numeric(x = min.distance)) {
+#       stop("min.distance should be a numeric value")
+#     }
+#     if (min.distance < 0) {
+#       warning("Requested a negative min.distance value, setting min.distance to zero")
+#       min.distance <- NULL
+#     }
+#     else if (min.distance == 0) {
+#       min.distance <- NULL
+#     }
+#   }
+#   if (is.null(x = gene.coords)) {
+#     gene.coords <- CollapseToLongestTranscript(ranges = Annotation(object = object[[peak.assay]]))
+#   }
+#   meta.features <- GetAssayData(object = object, assay = peak.assay, 
+#                                 slot = "meta.features")
+#   features.match <- c("GC.percent", "count")
+#   if (!("GC.percent" %in% colnames(x = meta.features))) {
+#     stop("GC content per peak has not been computed.\n", 
+#          "Run RegionsStats before calling this function.")
+#   }
+#   peak.data <- GetAssayData(object = object, assay = peak.assay, 
+#                             slot = "counts")
+#   if (!("count" %in% colnames(x = meta.features))) {
+#     hvf.info <- FindTopFeatures(object = peak.data)
+#     hvf.info <- hvf.info[rownames(x = meta.features), ]
+#     meta.features <- cbind(meta.features, hvf.info)
+#   }
+#   expression.data <- GetAssayData(object = object, assay = expression.assay, 
+#                                   slot = expression.slot)
+#   peakcounts <- meta.features[rownames(x = peak.data), "count"]
+#   genecounts <- rowSums(x = expression.data > 0)
+#   peaks.keep <- peakcounts > min.cells
+#   genes.keep <- genecounts > min.cells
+#   peak.data <- peak.data[peaks.keep, ]
+#   if (is.null(x = genes.use)) {
+#     expression.data <- expression.data[genes.keep, ]
+#   }
+#   else {
+#     genes.keep <- intersect(x = names(x = genes.keep[genes.keep]), 
+#                             y = genes.use)
+#     expression.data <- expression.data[genes.keep, , drop = FALSE]
+#   }
+#   if (verbose) {
+#     message("Testing ", nrow(x = expression.data), " genes and ", 
+#             sum(peaks.keep), " peaks")
+#   }
+#   genes <- rownames(x = expression.data)
+#   gene.coords.use <- gene.coords[gene.coords$gene_id %in% 
+#                                    genes, ]
+#   peaks <- granges(x = object[[peak.assay]])
+#   peaks <- peaks[peaks.keep]
+#   peak_distance_matrix <- DistanceToTSS(peaks = peaks, genes = gene.coords.use, 
+#                                         distance = distance)
+#   if (!is.null(x = min.distance)) {
+#     peak_distance_matrix_min <- DistanceToTSS(peaks = peaks, 
+#                                               genes = gene.coords.use, distance = min.distance)
+#     peak_distance_matrix <- peak_distance_matrix - peak_distance_matrix_min
+#   }
+#   
+#   colnames(peak_distance_matrix) <- genes.use
+#   if (sum(peak_distance_matrix) == 0) {
+#     stop("No peaks fall within distance threshold\n", "Have you set the proper genome and seqlevelsStyle for ", 
+#          peak.assay, " assay?")
+#   }
+#   genes.use <- colnames(x = peak_distance_matrix)
+#   all.peaks <- rownames(x = peak.data)
+#   peak.data <- t(x = peak.data)
+#   coef.vec <- c()
+#   gene.vec <- c()
+#   zscore.vec <- c()
+#   if (nbrOfWorkers() > 1) {
+#     mylapply <- future_lapply
+#   }
+#   else {
+#     mylapply <- ifelse(test = verbose, yes = pblapply, no = lapply)
+#   }
+#   res <- mylapply(X = seq_along(along.with = genes.use), FUN = function(i) {
+#     peak.use <- as.logical(x = peak_distance_matrix[, genes.use[[i]]])
+#     gene.expression <- t(x = expression.data[genes.use[[i]], 
+#                                              , drop = FALSE])
+#     gene.chrom <- as.character(x = seqnames(x = gene.coords.use[i]))
+#     if (sum(peak.use) < 2) {
+#       return(list(gene = NULL, coef = NULL, zscore = NULL))
+#     }
+#     else {
+#       peak.access <- peak.data[, peak.use, drop = FALSE]
+#       coef.result <- corSparse(X = peak.access, Y = gene.expression)
+#       rownames(x = coef.result) <- colnames(x = peak.access)
+#       coef.result <- coef.result[abs(x = coef.result) > 
+#                                    score_cutoff, , drop = FALSE]
+#       if (nrow(x = coef.result) == 0) {
+#         return(list(gene = NULL, coef = NULL, zscore = NULL))
+#       }
+#       else {
+#         peaks.test <- rownames(x = coef.result)
+#         trans.peaks <- all.peaks[!grepl(pattern = paste0("^", 
+#                                                          gene.chrom), x = all.peaks)]
+#         meta.use <- meta.features[trans.peaks, ]
+#         pk.use <- meta.features[peaks.test, ]
+#         bg.peaks <- lapply(X = seq_len(length.out = nrow(x = pk.use)), 
+#                            FUN = function(x) {
+#                              MatchRegionStats(meta.feature = meta.use, 
+#                                               query.feature = pk.use[x, , drop = FALSE], 
+#                                               features.match = c("GC.percent", "count", 
+#                                                                  "sequence.length"), n = n_sample, verbose = FALSE)
+#                            })
+#         bg.access <- peak.data[, unlist(x = bg.peaks), 
+#                                drop = FALSE]
+#         bg.coef <- corSparse(X = bg.access, Y = gene.expression)
+#         rownames(bg.coef) <- colnames(bg.access)
+#         zscores <- vector(mode = "numeric", length = length(x = peaks.test))
+#         for (j in seq_along(along.with = peaks.test)) {
+#           coef.use <- bg.coef[(((j - 1) * n_sample) + 
+#                                  1):(j * n_sample), ]
+#           z <- (coef.result[j] - mean(x = coef.use))/sd(x = coef.use)
+#           zscores[[j]] <- z
+#         }
+#         names(x = coef.result) <- peaks.test
+#         names(x = zscores) <- peaks.test
+#         zscore.vec <- c(zscore.vec, zscores)
+#         gene.vec <- c(gene.vec, rep(i, length(x = coef.result)))
+#         coef.vec <- c(coef.vec, coef.result)
+#       }
+#       gc(verbose = FALSE)
+#       pval.vec <- pnorm(q = -abs(x = zscore.vec))
+#       links.keep <- pval.vec < pvalue_cutoff
+#       if (sum(x = links.keep) == 0) {
+#         return(list(gene = NULL, coef = NULL, zscore = NULL))
+#       }
+#       else {
+#         gene.vec <- gene.vec[links.keep]
+#         coef.vec <- coef.vec[links.keep]
+#         zscore.vec <- zscore.vec[links.keep]
+#         return(list(gene = gene.vec, coef = coef.vec, 
+#                     zscore = zscore.vec))
+#       }
+#     }
+#   })
+#   browser()
+#   gene.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`, 
+#                                               1))
+#   coef.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`, 
+#                                               2))
+#   zscore.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`, 
+#                                                 3))
+#   if (length(x = coef.vec) == 0) {
+#     if (verbose) {
+#       message("No significant links found")
+#     }
+#     return(object)
+#   }
+#   peak.key <- seq_along(along.with = unique(x = names(x = coef.vec)))
+#   names(x = peak.key) <- unique(x = names(x = coef.vec))
+#   coef.matrix <- sparseMatrix(i = gene.vec, j = peak.key[names(x = coef.vec)], 
+#                               x = coef.vec, dims = c(length(x = genes.use), max(peak.key)))
+#   rownames(x = coef.matrix) <- genes.use
+#   colnames(x = coef.matrix) <- names(x = peak.key)
+#   links <- LinksToGRanges(linkmat = coef.matrix, gene.coords = gene.coords.use)
+#   z.matrix <- sparseMatrix(i = gene.vec, j = peak.key[names(x = zscore.vec)], 
+#                            x = zscore.vec, dims = c(length(x = genes.use), max(peak.key)))
+#   rownames(x = z.matrix) <- genes.use
+#   colnames(x = z.matrix) <- names(x = peak.key)
+#   z.lnk <- LinksToGRanges(linkmat = z.matrix, gene.coords = gene.coords.use)
+#   links$zscore <- z.lnk$score
+#   links$pvalue <- pnorm(q = -abs(x = links$zscore))
+#   links <- links[links$pvalue < pvalue_cutoff]
+#   Links(object = object[[peak.assay]]) <- links
+#   return(object)
+# }
+# 
+# environment(LinkPeaksId) <- asNamespace("Signac")
+
 convert_feature_identity <- function(object, assay, features, feature.format = "symbol") {
   
   #' 
