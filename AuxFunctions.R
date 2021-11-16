@@ -62,7 +62,7 @@ get_BINDetect_results <- function(res_path) {
                                 "TFBS_name","TFBS_score", "TFBS_strand",
                                 "peak_chr", "peak_start",   "peak_end",
                                 "peak_id", "peak_score", "peak_strand",
-                                "gene_id", "gene_name", "e12r1_score")
+                                "gene_id", "e12r1_score")
     
     # Conversion into a Granges object. The keep.extra.columns argument stores
     # other columns into the metadata slot, by name.
