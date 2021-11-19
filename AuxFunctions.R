@@ -62,7 +62,7 @@ get_BINDetect_results <- function(res_path) {
                                 "TFBS_name","TFBS_score", "TFBS_strand",
                                 "peak_chr", "peak_start",   "peak_end",
                                 "peak_id", "peak_score", "peak_strand",
-                                "gene_id", "e12r1_score")
+                                "gene_id", "footprint_score")
     
     # Conversion into a Granges object. The keep.extra.columns argument stores
     # other columns into the metadata slot, by name.
@@ -83,9 +83,85 @@ get_BINDetect_results <- function(res_path) {
   
 }
 
+get_TFBS_overview_results <- function(res_path) {
+  #'
+  #' Queries TOBIAS BINDetect result folder and finds TFBS overview of each TF.
+  #' 
+  #' -------------------------Briefly in pseudocode------------------------------
+  #' 
+  #' Access the BINDetect result folder
+  #' 
+  #' Initialize a result list
+  #' 
+  #' For each sub folder in the result folder do:
+  #'     Open the sub folder (henceforth sub folder = gene_TFBSname)
+  #'     Read the gene_TFBSname/gene_TFBS_name_overview.txt
+  #'     Convert the txt file into a granges
+  #'     Append the granges to the result list
+  #'     Convert list to Grangeslist
+  #'
+  #' Name the list after string vector (gene_TFBSname1, gene_TFBSname2,...)
+  #' 
+  #' Return the result list
+  #' ----------------------------------------------------------------------------
+  #' 
+  #' Requires installation of packages:
+  #'     GenomicRanges
+  #'     Magrittr
+  #'     
+  #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
+  #'
+  #'@returns a named list (Large list) consisting of granges for each result sub folder in @param res_path.
+  #'         The list can be conveniently accessed, for example, with out_list$gene_TFBSname
+  #'
+  #'@example get_BINDetect_results("/path/to/TOBIAS_framework/outs/TOBIAS_BINDetect_output/")
+  #'
+  # 'Dependencies'
+  library(GenomicRanges)
+  library(magrittr)
+  
+  # Reject the .txt, .pdf, etc. files with regex.
+  # Apparently all sub folders are of form gene_TFBSname.n where n \in {1,2,3}
+  filenames <- list.files(res_path, pattern = "\\.[0-9]")
+  # The actual loop as described in pseudo
+  out_list <- lapply(filenames, function(name) {
+    # Access the sub folder's contents.
+    # This should be of form res_path/gene_TFBSname.n/beds/
+    tfbs.overview.path <- paste0(res_path, name,"/") %>% paste0(name,"_overview.txt",sep="")
+    
+    # A little derail, but apparently the most simple way to name each column in the granges is 
+    # to convert the bed-file into a column-named data frame.
+    # The Granges inherits the column names and thus is can be indexed by column names.
+    tfbs.overview.df <- data.frame(read_tsv(tfbs.overview.path,skip = 1))
+    # Df column names created after column names in respath/gene_TFBSname.n/gene_TFBSname.n_overview.txt
+    colnames(tfbs.overview.df) <- c("TFBS_chr",    "TFBS_start", "TFBS_end",
+                                "TFBS_name","TFBS_score", "TFBS_strand",
+                                "peak_chr", "peak_start",   "peak_end",
+                                "peak_strand", "gene_id", "gene_name",
+                                "score", "bound")
+    
+    # Conversion into a Granges object. The keep.extra.columns argument stores
+    # other columns into the metadata slot, by name.
+    tfbs.overview.granges <- makeGRangesFromDataFrame(tfbs.overview.df,
+                                                  keep.extra.columns = TRUE,
+                                                  seqnames.field = "TFBS_chr",
+                                                  start.field = "TFBS_start",
+                                                  end.field = "TFBS_end",
+                                                  strand.field = "TFBS_strand")
+    
+    # Return the list of Granges objects
+    return(tfbs.overview.granges)
+  })
+  # Name each Granges with corresponding gene_TFBSname.n
+  names(out_list) <- list.files(res_path, pattern = "\\.[0-9]")
+  # Return the Granges list
+  return(out_list)
+  
+}
+
 
 # RenameGenesSeurat  ------------------------------------------------------------------------------------
-RenameGenesSeurat <- function(obj = ls.Seurat[[i]], newnames = HGNC.updated[[i]]$Suggested.Symbol) { # Replace gene names in different slots of a Seurat object. Run this before integration. Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.
+RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different slots of a Seurat object. Run this before integration. Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.
   print("Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.")
   obj[['RNA_name']] <- obj[['RNA']]
   RNA <- obj@assays$RNA_name
