@@ -19,7 +19,7 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
     row.split <- TF.families[rownames(TF.mat.to.plot)]
     
-    col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
+    col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")))
     
     TF.2.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[2], heatmap_legend_param=list(title=cluster.names[2]), bottom_annotation = col_ha)
     
