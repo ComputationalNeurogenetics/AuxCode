@@ -1,5 +1,56 @@
 # Some additional functions ----
 
+TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=NA){
+  if (all(!is.null(c(TF.mat.1,TF.mat.2)))){
+    # Draw differential plot
+    TF.used.i <- find.combined.non.empty.i(TF.mat.1$per.feat.mat, TF.mat.2$per.feat.mat)
+    
+    # Plot 1
+    TF.mat.to.plot <- TF.mat.1$per.feat.mat[TF.used.i,]
+    col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
+    row.split <- TF.families[rownames(TF.mat.to.plot)]
+    
+    col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
+    
+    TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[1], heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha)
+    
+    # Plot 2
+    TF.mat.to.plot <- TF.mat.2$per.feat.mat[TF.used.i,]
+    col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
+    row.split <- TF.families[rownames(TF.mat.to.plot)]
+    
+    col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
+    
+    TF.2.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[2], heatmap_legend_param=list(title=cluster.names[2]), bottom_annotation = col_ha)
+    
+    # Calculate differential
+    TF.diff.mat <- TF.diff(TF.mat.1$per.feat.mat[TF.used.i,],TF.mat.2$per.feat.mat[TF.used.i,])
+    
+    TF.mat.to.plot <- TF.diff.mat
+    col_fun = colorRamp2(c(min(TF.mat.to.plot), 0, max(TF.mat.to.plot)), c("blue", "white", "red"))
+    row.split <- TF.families[rownames(TF.mat.to.plot)]
+    
+    mean.acc.diff <- colMeans(TF.mat.1$acc)- colMeans(TF.mat.2$acc)
+    col_ha <- columnAnnotation(acc.diff = anno_barplot(mean.acc.diff, height = unit(4, "cm")))
+    
+    TF.3.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top",  column_title = "Difference", heatmap_legend_param=list(title="Diff (1st-2nd)"), bottom_annotation = col_ha)
+    TF.plot.combined <- TF.1.plot + TF.2.plot + TF.3.plot
+    return(TF.plot.combined)
+  } else if (!is.null(TF.mat.1)) {
+    # Draw single plot
+    TF.mat.to.plot <- TF.mat.1$per.feat.mat
+    col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
+    row.split <- TF.families[rownames(TF.mat.to.plot)]
+    
+    col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")))
+    
+    TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = "Cluster 8", heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha)
+    return(TF.1.plot)
+  } else {
+    # Error
+  }
+}
+
 construct_range <- function(chr,gene.start,gene.end, width){
   return(paste("chr",chr,"-",gene.start-width,"-",gene.end+width,sep=""))
 }
