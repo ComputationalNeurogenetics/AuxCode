@@ -1,5 +1,91 @@
 # Some additional functions ----
 
+construct_range <- function(chr,gene.start,gene.end, width){
+  return(paste("chr",chr,"-",gene.start-width,"-",gene.end+width,sep=""))
+}
+
+find_TFBS_range <- function(tobias_set, region, filter.bound=F, return.empty=F){
+  region.gr <- StringToGRanges(region)
+  hits <- lapply(tobias_set,function(ts){
+    ts <- ts[ts %over% region.gr]
+    if (filter.bound & length(ts) > 0){
+      tfbs.metadata.tmp <- colnames(ts@elementMetadata)
+      bound.cols <- grep(tfbs.metadata.tmp, pattern = ".*bound")
+      bound.i <- apply(ts@elementMetadata[,bound.cols],1,function(b){any(b==1)})
+      ts[bound.i]
+    } else {
+      ts
+    }
+  })
+  ts.hits.count <- sapply(hits,length)
+  if (return.empty){
+    ts.hits <- hits
+  } else {
+    ts.hits <- hits[ts.hits.count>0]
+  }
+  return(ts.hits)    
+}
+
+Find.TF.families <- function(TOBIAS_res){
+  require(JASPAR2020)
+  TF.family <- unlist(sapply(names(TOBIAS_res), function(tf){
+    opts <- list()
+    opts[["ID"]] <- str_replace(string = tf, pattern = ".*_",replacement = "")
+    TF.tmp.data <- getMatrixSet(JASPAR2020, opts)
+    return(TF.tmp.data[[1]]@tags$family)
+  }, simplify = TRUE))
+  return(TF.family)
+}
+
+TF.diff <- function(TF.mat.1, TF.mat.2){
+  TF.mat.diff <- TF.mat.1 - TF.mat.2
+  return(TF.mat.diff)
+}
+
+find.combined.non.empty.i <- function(TF.matrix.1, TF.matrix.2){
+  TF.1.i <- apply(TF.matrix.1,1,function(r){any(r>0)})
+  TF.2.i <- apply(TF.matrix.2,1,function(r){any(r>0)})
+  return(TF.1.i | TF.2.i)
+}
+
+TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.score=NULL, return.empty=F){
+  # Define features dimension (cols)
+  features.gr <- StringToGRanges(features)
+  names(features.gr) <- rownames(features)
+  features.in.region <- features.gr[features.gr %over% StringToGRanges(region)]
+  print(paste("Found ", length(features.in.region), " features in the region", sep=""))
+  
+  # Define TF-motif dimension (rows)
+  overlapping.tfbs <- find_TFBS_range(TFBS.data, region, return.empty = return.empty)
+  TF.motifs <- unique(names(lapply(overlapping.tfbs, function(b){b$TFBS_name})))
+  print(paste("Found ", length(TF.motifs), " unique TF motifs from the region", sep=""))
+  
+  # Create zero matrix
+  TF.motif.matrix <- matrix(0, nrow = length(TF.motifs), ncol=length(features.in.region))
+  rownames(TF.motif.matrix) <- TF.motifs
+  colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
+  
+  missed.TFs <- c()
+  
+  lapply(names(overlapping.tfbs), function(tf){
+    TF.bound.loc.gr <- GRangesToString(overlapping.tfbs[[tf]])
+    
+    TF.loc.in.features.i <- which(overlapping.tfbs[[tf]] %over% features.in.region)
+    TF.footprint.scores <- overlapping.tfbs[[tf]][TF.loc.in.features.i]$footprint_score
+    
+    hits <- findOverlaps(query = overlapping.tfbs[[tf]][TF.loc.in.features.i], subject = features.in.region)
+    TF.bound.features <- GRangesToString(features.in.region[subjectHits(hits)])
+    
+    if (!TF.bound.features[1]=="--"){
+      avg.footprint.score.per.feat <- tapply(INDEX=TF.bound.features, X=TF.footprint.scores, FUN=mean)
+      TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
+    } else {
+      missed.TFs <<- c(missed.TFs,tf)
+    }
+  })
+  return(list(per.feat.mat=TF.motif.matrix, missed=missed.TFs))
+}
+
 get_BINDetect_results <- function(res_path) {
   #'
   #' Queries TOBIAS BINDetect result folder and selects result bed files.
@@ -132,14 +218,8 @@ get_TFBS_overview_results <- function(res_path) {
     # A little derail, but apparently the most simple way to name each column in the granges is 
     # to convert the bed-file into a column-named data frame.
     # The Granges inherits the column names and thus is can be indexed by column names.
-    tfbs.overview.df <- data.frame(read_tsv(tfbs.overview.path,skip = 1))
-    # Df column names created after column names in respath/gene_TFBSname.n/gene_TFBSname.n_overview.txt
-    colnames(tfbs.overview.df) <- c("TFBS_chr",    "TFBS_start", "TFBS_end",
-                                "TFBS_name","TFBS_score", "TFBS_strand",
-                                "peak_chr", "peak_start",   "peak_end",
-                                "peak_strand", "gene_id", "gene_name",
-                                "score", "bound")
-    
+    tfbs.overview.df <- data.frame(read_tsv(tfbs.overview.path, col_names = TRUE))
+ 
     # Conversion into a Granges object. The keep.extra.columns argument stores
     # other columns into the metadata slot, by name.
     tfbs.overview.granges <- makeGRangesFromDataFrame(tfbs.overview.df,
