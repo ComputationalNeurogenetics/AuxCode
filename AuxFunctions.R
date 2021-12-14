@@ -79,6 +79,7 @@ find_TFBS_range <- function(tobias_set, region, filter.bound=F, return.empty=F){
 
 Find.TF.families <- function(TOBIAS_res){
   require(JASPAR2020)
+  require(TFBSTools)
   TF.family <- unlist(sapply(names(TOBIAS_res), function(tf){
     opts <- list()
     opts[["ID"]] <- str_replace(string = tf, pattern = ".*_",replacement = "")
