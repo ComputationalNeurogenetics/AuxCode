@@ -58,23 +58,28 @@ construct_range <- function(chr,gene.start,gene.end, width){
 find_TFBS_range <- function(tobias_set, region, filter.bound=F, return.empty=F){
   region.gr <- StringToGRanges(region)
   hits <- lapply(tobias_set,function(ts){
-    ts <- ts[ts %over% region.gr]
+
+    # TODO: Add here solution for non-matching sequence levels
+    #if (any(seqlevels(ts) %in% seqlevels(region.gr))){
+      ts <- ts[ts %over% region.gr]
+
     if (filter.bound & length(ts) > 0){
       tfbs.metadata.tmp <- colnames(ts@elementMetadata)
       bound.cols <- grep(tfbs.metadata.tmp, pattern = ".*bound")
       bound.i <- apply(ts@elementMetadata[,bound.cols],1,function(b){any(b==1)})
-      ts[bound.i]
+      return(ts[bound.i])
     } else {
-      ts
+      return(ts)
     }
   })
+  
   ts.hits.count <- sapply(hits,length)
   if (return.empty){
     ts.hits <- hits
   } else {
     ts.hits <- hits[ts.hits.count>0]
   }
-  return(ts.hits)    
+  return(ts.hits) 
 }
 
 Find.TF.families <- function(TOBIAS_res){
@@ -138,7 +143,7 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   return(list(per.feat.mat=TF.motif.matrix, missed=missed.TFs))
 }
 
-get_BINDetect_results <- function(res_path) {
+get_BINDetect_results <- function(res_path, col.names="Default") {
   #'
   #' Queries TOBIAS BINDetect result folder and selects result bed files.
   #' 
@@ -196,12 +201,17 @@ get_BINDetect_results <- function(res_path) {
     # The Granges inherits the column names and thus is can be indexed by column names.
     bound.bed.df <- data.frame(read.table(bound.bed.full.path))
     # Df column names created after column names in respath/gene_TFBSname.n/gene_TFBSname.n_overview.txt
-    colnames(bound.bed.df) <- c("TFBS_chr",    "TFBS_start", "TFBS_end",
-                                "TFBS_name","TFBS_score", "TFBS_strand",
-                                "peak_chr", "peak_start",   "peak_end",
-                                "peak_id", "peak_score", "peak_strand",
-                                "gene_id", "footprint_score")
-    
+    if (col.names[1]=="Default"){
+    col.names.in.input <- c("TFBS_chr",    "TFBS_start", "TFBS_end",
+                            "TFBS_name","TFBS_score", "TFBS_strand",
+                            "peak_chr", "peak_start",   "peak_end",
+                            "peak_id", "peak_score", "peak_strand",
+                            "gene_id", "footprint_score")
+    colnames(bound.bed.df) <- col.names.in.input
+    } else {
+      col.names.in.input <- col.names
+      colnames(bound.bed.df) <- col.names.in.input
+    }
     # Conversion into a Granges object. The keep.extra.columns argument stores
     # other columns into the metadata slot, by name.
     bound.bed.granges <- makeGRangesFromDataFrame(bound.bed.df,
