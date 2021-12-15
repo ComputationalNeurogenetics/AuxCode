@@ -1,6 +1,6 @@
 # Some additional functions ----
 
-TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=NA){
+TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=NA, links.data=NULL){
   if (all(!is.null(c(TF.mat.1,TF.mat.2)))){
     # Draw differential plot
     TF.used.i <- find.combined.non.empty.i(TF.mat.1$per.feat.mat, TF.mat.2$per.feat.mat)
@@ -10,7 +10,21 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
     row.split <- TF.families[rownames(TF.mat.to.plot)]
     
-    col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
+    # Format Links data to col_ha if present
+    if (!is.null(links.data)){
+      scores <- rep(0, ncol(TF.mat.1$acc))
+      names(scores) <- colnames(TF.mat.1$acc)
+      
+      scores.tmp <- links.data[[1]]$score
+      names(scores.tmp) <- links.data[[1]]$peak
+      
+      scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
+      
+      scores[names(scores.tmp)] <- scores.tmp
+      col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
+    } else {
+      col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
+    }
     
     TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[1], heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha)
     
@@ -19,7 +33,21 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
     row.split <- TF.families[rownames(TF.mat.to.plot)]
     
-    col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")))
+    # Format Links data to col_ha if present
+    if (!is.null(links.data)){
+      scores <- rep(0, ncol(TF.mat.2$acc))
+      names(scores) <- colnames(TF.mat.2$acc)
+      
+      scores.tmp <- links.data[[2]]$score
+      names(scores.tmp) <- links.data[[2]]$peak
+      
+      scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
+      
+      scores[names(scores.tmp)] <- scores.tmp
+      col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
+    } else {
+      col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")))
+    }
     
     TF.2.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[2], heatmap_legend_param=list(title=cluster.names[2]), bottom_annotation = col_ha)
     
@@ -31,7 +59,7 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     row.split <- TF.families[rownames(TF.mat.to.plot)]
     
     mean.acc.diff <- colMeans(TF.mat.1$acc)- colMeans(TF.mat.2$acc)
-    col_ha <- columnAnnotation(acc.diff = anno_barplot(mean.acc.diff, height = unit(4, "cm")))
+    col_ha <- columnAnnotation(acc.diff = anno_barplot(mean.acc.diff, height = unit(4, "cm"), gp = gpar(fill = ifelse(mean.acc.diff>0, "red", "blue"))))
     
     TF.3.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top",  column_title = "Difference", heatmap_legend_param=list(title="Diff (1st-2nd)"), bottom_annotation = col_ha)
     TF.plot.combined <- TF.1.plot + TF.2.plot + TF.3.plot
