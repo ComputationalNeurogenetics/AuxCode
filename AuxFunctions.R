@@ -728,11 +728,13 @@ motif.to.geneName <- function(motif, dash.type="-"){
   if (length(grep(pattern="::", gene.part)) == 0){
     # Strip (ver something) away
     gene.part <- gsub(pattern = "\\(.+\\)", x = gene.part, replacement = "")
+    gene.part <- gsub(pattern = "var.\\d", x = gene.part, replacement = "")
     return(gene.part)
   } else {
     genes.part <- strsplit(gene.part,split = "::")[[1]]
      # Strip (ver something) away
     genes.part <- gsub(pattern = "\\(.+\\)", x = genes.part, replacement = "")
+    genes.part <- gsub(pattern = "var.\\d", x = genes.part, replacement = "")
     return(genes.part)
     }
 }
