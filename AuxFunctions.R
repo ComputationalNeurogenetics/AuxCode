@@ -1,5 +1,44 @@
 # Some additional functions ----
 
+find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata){
+  DefaultAssay(s.data) <- "RNA_name"
+  gene.name.space <- rownames(s.data)
+  TF.ids <- rownames(TF.footprint.data$per.feat.mat)
+  # Iterate through all TF motif ids in TF foootprint data
+  TF.gene.exprs <- sapply(TF.ids, function(motif.id){
+    # Look for official gene name for the motif from JASPAR db
+    gene.name.tmp <- str_to_title(str_to_lower(filter(TF.metadata, motif.ids==motif.id) %>% pull(gene.name)))
+    
+    if (gene.name.tmp %in% gene.name.space) {
+      # If gene name present in gene.name.space we return its mean expression in the cell group within s.data
+      gene.expr <- colMeans(FetchData(s.data, vars=gene.name.tmp))
+      return(gene.expr)
+    } else if (grepl(x=gene.name.tmp, pattern=".*:.*")) {
+      # If gene name contains :: then there are two TFs binding one motif together, in that case we calculate mean expression for both genes from data in s.data, assuming they exist in the name space
+      gene.names.tmp <- unlist(str_split(string=gene.name.tmp, pattern="::"))
+      gene.names.tmp <- gene.names.tmp[gene.names.tmp %in% gene.name.space]
+      gene.expr <- colMeans(FetchData(s.data, vars=gene.names.tmp))
+      
+      if (length(gene.expr)>1) {
+        # If there are mean expression values for more than one gene we check if either is zero, then both are set to zero, otherwise we take mean of those.
+        if (any(gene.expr==0)) {
+          return(0)
+        } else {
+          return(mean(gene.expr))
+        }
+      } else {
+        # If only one TF name was present in the gene name space then just return its mean value
+        return(gene.expr)
+      }
+    } else {
+      # If TF does not appear in gene name space we will return NA as its mean expression value
+      return(NA)
+    }
+  })
+  return(TF.gene.exprs)
+}
+
+
 TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=NA, links.data=NULL){
   if (all(!is.null(c(TF.mat.1,TF.mat.2)))){
     # Draw differential plot
