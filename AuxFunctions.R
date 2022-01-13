@@ -13,7 +13,7 @@ find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata){
       # If gene name present in gene.name.space we return its mean expression in the cell group within s.data
       gene.expr <- colMeans(FetchData(s.data, vars=gene.name.tmp))
       return(gene.expr)
-    } else if (grepl(x=gene.name.tmp, pattern=".*:.*")) {
+    } else if (grepl(x=gene.name.tmp, pattern=".*::.*")) {
       # If gene name contains :: then there are two TFs binding one motif together, in that case we calculate mean expression for both genes from data in s.data, assuming they exist in the name space
       gene.names.tmp <- unlist(str_split(string=gene.name.tmp, pattern="::"))
       gene.names.tmp <- gene.names.tmp[gene.names.tmp %in% gene.name.space]
@@ -35,11 +35,12 @@ find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata){
       return(NA)
     }
   })
+  names(TF.gene.exprs) <- TF.ids
   return(TF.gene.exprs)
 }
 
 
-TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=NA, links.data=NULL){
+TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=NA, links.data=NULL, TF.exprs=FALSE){
   if (all(!is.null(c(TF.mat.1,TF.mat.2)))){
     # Draw differential plot
     TF.used.i <- find.combined.non.empty.i(TF.mat.1$per.feat.mat, TF.mat.2$per.feat.mat)
@@ -65,7 +66,16 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
       col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
     }
     
-    TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[1], heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha)
+    # Format TF expression data into RowAnnotation if TF.exprs is TRUE
+    if (TF.exprs){
+      #browser()
+      row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.1$expr.pres[names(TF.used.i[TF.used.i==TRUE])]))
+    } else 
+      {
+      row_ha <- NULL
+    }
+    
+    TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[1], heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha, right_annotation = row_ha)
     
     # Plot 2
     TF.mat.to.plot <- TF.mat.2$per.feat.mat[TF.used.i,]
@@ -88,7 +98,15 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
       col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")))
     }
     
-    TF.2.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[2], heatmap_legend_param=list(title=cluster.names[2]), bottom_annotation = col_ha)
+    # Format TF expression data into RowAnnotation if TF.exprs is TRUE
+    if (TF.exprs){
+      row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.2$expr.pres[names(TF.used.i[TF.used.i==TRUE])]))
+    } else 
+    {
+      row_ha <- NULL
+    }
+    
+    TF.2.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[2], heatmap_legend_param=list(title=cluster.names[2]), bottom_annotation = col_ha, right_annotation = row_ha)
     
     # Calculate differential
     TF.diff.mat <- TF.diff(TF.mat.1$per.feat.mat[TF.used.i,],TF.mat.2$per.feat.mat[TF.used.i,])
