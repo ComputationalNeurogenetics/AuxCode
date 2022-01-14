@@ -185,9 +185,12 @@ find_TFBS_range <- function(tobias_set, region, filter.bound=F, return.empty=F){
   region.gr <- StringToGRanges(region)
   hits <- lapply(tobias_set,function(ts){
 
-    # TODO: Add here solution for non-matching sequence levels
-    #if (any(seqlevels(ts) %in% seqlevels(region.gr))){
-      ts <- ts[ts %over% region.gr]
+    # Look for tobias sets overlapping region of interest only if there is common sequence level, otherwise return empty granges set
+    if (all(seqlevels(ts) %in% seqlevels(region.gr)==FALSE)){
+      ts <- ts[FALSE,]
+    } else {
+    ts <- ts[ts %over% region.gr]
+    }
 
     if (filter.bound & length(ts) > 0){
       tfbs.metadata.tmp <- colnames(ts@elementMetadata)
@@ -248,18 +251,24 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   rownames(TF.motif.matrix) <- TF.motifs
   colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
   
+  # Iniate empty vector for TFs
   missed.TFs <- c()
   
   lapply(names(overlapping.tfbs), function(tf){
     TF.bound.loc.gr <- GRangesToString(overlapping.tfbs[[tf]])
+    #browser()
+    if (all(seqlevelsInUse(overlapping.tfbs[[tf]]) %in% seqlevelsInUse(features.in.region)==FALSE)){
+      TF.footprint.scores <- overlapping.tfbs[[tf]][FALSE]$footprint_score
+      TF.bound.features <- NULL
+    } else {
+      #browser()
+      TF.loc.in.features.i <- which(overlapping.tfbs[[tf]] %over% features.in.region)
+      TF.footprint.scores <- overlapping.tfbs[[tf]][TF.loc.in.features.i]$footprint_score
+      hits <- findOverlaps(query = overlapping.tfbs[[tf]][TF.loc.in.features.i], subject = features.in.region)
+      TF.bound.features <- GRangesToString(features.in.region[subjectHits(hits)])
+    }
     
-    TF.loc.in.features.i <- which(overlapping.tfbs[[tf]] %over% features.in.region)
-    TF.footprint.scores <- overlapping.tfbs[[tf]][TF.loc.in.features.i]$footprint_score
-    
-    hits <- findOverlaps(query = overlapping.tfbs[[tf]][TF.loc.in.features.i], subject = features.in.region)
-    TF.bound.features <- GRangesToString(features.in.region[subjectHits(hits)])
-    
-    if (!TF.bound.features[1]=="--"){
+    if (!is.null(TF.bound.features)){
       avg.footprint.score.per.feat <- tapply(INDEX=TF.bound.features, X=TF.footprint.scores, FUN=mean)
       TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
     } else {
