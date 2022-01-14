@@ -40,13 +40,25 @@ find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata){
 }
 
 
-TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=NA, links.data=NULL, TF.exprs=FALSE){
+TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=NA, links.data=NULL, TF.exprs=FALSE, expr.cutoff=NULL){
   if (all(!is.null(c(TF.mat.1,TF.mat.2)))){
     # Draw differential plot
     TF.used.i <- find.combined.non.empty.i(TF.mat.1$per.feat.mat, TF.mat.2$per.feat.mat)
+    TF.used <- names(TF.used.i[TF.used.i==TRUE])
+    
+    TF.mat.1.expr <- TF.mat.1$expr.pres[TF.used]
+    TF.mat.2.expr <- TF.mat.2$expr.pres[TF.used]
+    
+    if (!is.null(expr.cutoff)){
+      TF.expr.filt.l <- (TF.mat.1.expr > expr.cutoff | TF.mat.2.expr > expr.cutoff) & (!is.na(TF.mat.1.expr) & !is.na(TF.mat.2.expr))
+      TF.expr.filt.names <- names(TF.expr.filt.l)[TF.expr.filt.l==TRUE]
+      TF.mat.1.expr <- TF.mat.1.expr[TF.expr.filt.l]
+      TF.mat.2.expr <- TF.mat.2.expr[TF.expr.filt.l]
+      TF.used <- TF.used[TF.used %in% names(TF.mat.1.expr)]
+    }
     
     # Plot 1
-    TF.mat.to.plot <- TF.mat.1$per.feat.mat[TF.used.i,]
+    TF.mat.to.plot <- TF.mat.1$per.feat.mat[TF.used,]
     col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
     row.split <- TF.families[rownames(TF.mat.to.plot)]
     
@@ -69,7 +81,7 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     # Format TF expression data into RowAnnotation if TF.exprs is TRUE
     if (TF.exprs){
       #browser()
-      row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.1$expr.pres[names(TF.used.i[TF.used.i==TRUE])]))
+      row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.1.expr))
     } else 
       {
       row_ha <- NULL
@@ -78,7 +90,7 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[1], heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha, right_annotation = row_ha)
     
     # Plot 2
-    TF.mat.to.plot <- TF.mat.2$per.feat.mat[TF.used.i,]
+    TF.mat.to.plot <- TF.mat.2$per.feat.mat[TF.used,]
     col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
     row.split <- TF.families[rownames(TF.mat.to.plot)]
     
@@ -100,7 +112,7 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     
     # Format TF expression data into RowAnnotation if TF.exprs is TRUE
     if (TF.exprs){
-      row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.2$expr.pres[names(TF.used.i[TF.used.i==TRUE])]))
+      row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.2.expr))
     } else 
     {
       row_ha <- NULL
@@ -109,7 +121,7 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     TF.2.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[2], heatmap_legend_param=list(title=cluster.names[2]), bottom_annotation = col_ha, right_annotation = row_ha)
     
     # Calculate differential
-    TF.diff.mat <- TF.diff(TF.mat.1$per.feat.mat[TF.used.i,],TF.mat.2$per.feat.mat[TF.used.i,])
+    TF.diff.mat <- TF.diff(TF.mat.1$per.feat.mat[TF.used,],TF.mat.2$per.feat.mat[TF.used,])
     
     TF.mat.to.plot <- TF.diff.mat
     col_fun = colorRamp2(c(min(TF.mat.to.plot), 0, max(TF.mat.to.plot)), c("blue", "white", "red"))
@@ -118,18 +130,47 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     mean.acc.diff <- colMeans(TF.mat.1$acc)- colMeans(TF.mat.2$acc)
     col_ha <- columnAnnotation(acc.diff = anno_barplot(mean.acc.diff, height = unit(4, "cm"), gp = gpar(fill = ifelse(mean.acc.diff>0, "red", "blue"))))
     
-    TF.3.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top",  column_title = "Difference", heatmap_legend_param=list(title="Diff (1st-2nd)"), bottom_annotation = col_ha)
+    # Format TF expression data into RowAnnotation if TF.exprs is TRUE
+    if (TF.exprs){
+      #browser()
+      diff.exp <- TF.mat.1$expr.pres[TF.used] - TF.mat.2$expr.pres[TF.used]
+      row_ha <- rowAnnotation(expr = anno_barplot(diff.exp))
+    } else 
+    {
+      row_ha <- NULL
+    }
+    
+    TF.3.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top",  column_title = "Difference", heatmap_legend_param=list(title="Diff (1st-2nd)"), bottom_annotation = col_ha, right_annotation = row_ha)
     TF.plot.combined <- TF.1.plot + TF.2.plot + TF.3.plot
     return(TF.plot.combined)
   } else if (!is.null(TF.mat.1)) {
+    TF.used <- rownames(TF.mat.1$per.feat.mat)
+    TF.mat.1.expr <- TF.mat.1$expr.pres[TF.used]
+    
+    if (!is.null(expr.cutoff)){
+      TF.expr.filt.l <- (TF.mat.1.expr > expr.cutoff) & !is.na(TF.mat.1.expr)
+      TF.expr.filt.names <- names(TF.expr.filt.l)[TF.expr.filt.l==TRUE]
+      TF.mat.1.expr <- TF.mat.1.expr[TF.expr.filt.l]
+      TF.used <- TF.used[TF.used %in% names(TF.mat.1.expr)]
+    }
+    
     # Draw single plot
-    TF.mat.to.plot <- TF.mat.1$per.feat.mat
+    TF.mat.to.plot <- TF.mat.1$per.feat.mat[TF.used,]
     col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
     row.split <- TF.families[rownames(TF.mat.to.plot)]
     
-    col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")))
+    col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc[TF.used], height = unit(4, "cm")))
     
-    TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = "Cluster 8", heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha)
+    # Format TF expression data into RowAnnotation if TF.exprs is TRUE
+    if (TF.exprs){
+      #browser()
+      row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.1$expr.pres[names(TF.used.i[TF.used.i==TRUE])]))
+    } else 
+    {
+      row_ha <- NULL
+    }
+    
+    TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = "Cluster 8", heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha,  right_annotation = row_ha)
     return(TF.1.plot)
   } else {
     # Error
