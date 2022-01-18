@@ -242,6 +242,7 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   print(paste("Found ", length(features.in.region), " features in the region", sep=""))
   
   # Define TF-motif dimension (rows)
+  # Find TFBS events that overlap given gene region
   overlapping.tfbs <- find_TFBS_range(TFBS.data, region, return.empty = return.empty)
   TF.motifs <- unique(names(lapply(overlapping.tfbs, function(b){b$TFBS_name})))
   print(paste("Found ", length(TF.motifs), " unique TF motifs from the region", sep=""))
@@ -254,26 +255,24 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   # Iniate empty vector for TFs
   missed.TFs <- c()
   
+  # Loop over all TFBS binding events which overlapped gene region and check their overlap with features
   lapply(names(overlapping.tfbs), function(tf){
     TF.bound.loc.gr <- GRangesToString(overlapping.tfbs[[tf]])
-    #browser()
     if (all(seqlevelsInUse(overlapping.tfbs[[tf]]) %in% seqlevelsInUse(features.in.region)==FALSE)){
       TF.footprint.scores <- overlapping.tfbs[[tf]][FALSE]$footprint_score
       TF.bound.features <- NULL
+      missed.TFs <<- c(missed.TFs,tf)
     } else {
-      #browser()
       TF.loc.in.features.i <- which(overlapping.tfbs[[tf]] %over% features.in.region)
       TF.footprint.scores <- overlapping.tfbs[[tf]][TF.loc.in.features.i]$footprint_score
       hits <- findOverlaps(query = overlapping.tfbs[[tf]][TF.loc.in.features.i], subject = features.in.region)
       TF.bound.features <- GRangesToString(features.in.region[subjectHits(hits)])
+      if (!all(TF.bound.features=="--")==TRUE){
+        avg.footprint.score.per.feat <- tapply(INDEX=TF.bound.features, X=TF.footprint.scores, FUN=mean)
+        TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
+      }
     }
-    
-    if (!is.null(TF.bound.features)){
-      avg.footprint.score.per.feat <- tapply(INDEX=TF.bound.features, X=TF.footprint.scores, FUN=mean)
-      TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
-    } else {
-      missed.TFs <<- c(missed.TFs,tf)
-    }
+  
   })
   return(list(per.feat.mat=TF.motif.matrix, missed=missed.TFs))
 }
