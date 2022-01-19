@@ -234,47 +234,39 @@ find.combined.non.empty.i <- function(TF.matrix.1, TF.matrix.2){
   return(TF.1.i | TF.2.i)
 }
 
-TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.score=NULL, return.empty=F){
+TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.score=NULL){
   # Define features dimension (cols)
   features.gr <- StringToGRanges(features)
   names(features.gr) <- rownames(features)
   features.in.region <- features.gr[features.gr %over% StringToGRanges(region)]
   print(paste("Found ", length(features.in.region), " features in the region", sep=""))
   
-  # Define TF-motif dimension (rows)
-  # Find TFBS events that overlap given gene region
-  overlapping.tfbs <- find_TFBS_range(TFBS.data, region, return.empty = return.empty)
-  TF.motifs <- unique(names(lapply(overlapping.tfbs, function(b){b$TFBS_name})))
-  print(paste("Found ", length(TF.motifs), " unique TF motifs from the region", sep=""))
+  TFBS.gr.list <- GRangesList(TFBS.data)
+  TFBS.in.features <- lapply(TFBS.gr.list, function(tfbs){
+    tmp.hits <- findOverlaps(query = tfbs, subject = features.in.region, minoverlap = 1)
+    tmp.features <- GRangesToString(features.in.region[subjectHits(tmp.hits)])
+    tfbs.hits <- tfbs[queryHits(tmp.hits)]
+    if (length(tfbs.hits)>0){
+      tfbs.hits$feature <- tmp.features
+    }
+    return(tfbs.hits)
+  })
+  
+  TF.hit.count <- sapply(TFBS.in.features, length)
+  TF.hits <- TFBS.in.features[TF.hit.count>0]
   
   # Create zero matrix
-  TF.motif.matrix <- matrix(0, nrow = length(TF.motifs), ncol=length(features.in.region))
-  rownames(TF.motif.matrix) <- TF.motifs
+  TF.motif.matrix <- matrix(0, nrow = length(TF.hits), ncol=length(features.in.region))
+  rownames(TF.motif.matrix) <- names(TF.hits)
   colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
   
-  # Iniate empty vector for TFs
-  missed.TFs <- c()
-  
-  # Loop over all TFBS binding events which overlapped gene region and check their overlap with features
-  lapply(names(overlapping.tfbs), function(tf){
-    TF.bound.loc.gr <- GRangesToString(overlapping.tfbs[[tf]])
-    if (all(seqlevelsInUse(overlapping.tfbs[[tf]]) %in% seqlevelsInUse(features.in.region)==FALSE)){
-      TF.footprint.scores <- overlapping.tfbs[[tf]][FALSE]$footprint_score
-      TF.bound.features <- NULL
-      missed.TFs <<- c(missed.TFs,tf)
-    } else {
-      TF.loc.in.features.i <- which(overlapping.tfbs[[tf]] %over% features.in.region)
-      TF.footprint.scores <- overlapping.tfbs[[tf]][TF.loc.in.features.i]$footprint_score
-      hits <- findOverlaps(query = overlapping.tfbs[[tf]][TF.loc.in.features.i], subject = features.in.region)
-      TF.bound.features <- GRangesToString(features.in.region[subjectHits(hits)])
-      if (!all(TF.bound.features=="--")==TRUE){
-        avg.footprint.score.per.feat <- tapply(INDEX=TF.bound.features, X=TF.footprint.scores, FUN=mean)
-        TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
-      }
-    }
-  
+  # Loop over all TFBS binding events which overlapped features in the gene region
+  lapply(names(TF.hits), function(tf){
+    feature <- TF.hits[[tf]]$feature
+    avg.footprint.score.per.feat <- tapply(INDEX=feature, X=TF.hits[[tf]]$footprint_score, FUN=mean)
+    TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
   })
-  return(list(per.feat.mat=TF.motif.matrix, missed=missed.TFs))
+  return(list(per.feat.mat=TF.motif.matrix))
 }
 
 get_BINDetect_results <- function(res_path, col.names="Default") {
@@ -436,7 +428,6 @@ get_TFBS_overview_results <- function(res_path) {
 }
 
 
-# RenameGenesSeurat  ------------------------------------------------------------------------------------
 RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different slots of a Seurat object. Run this before integration. Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.
   print("Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.")
   obj[['RNA_name']] <- obj[['RNA']]
