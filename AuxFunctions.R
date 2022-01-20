@@ -73,6 +73,7 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
       scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
       
       scores[names(scores.tmp)] <- scores.tmp
+      # TODO: This seems to fail if all scores are 0, needs to be handled properly
       col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
     } else {
       col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
@@ -231,6 +232,8 @@ TF.diff <- function(TF.mat.1, TF.mat.2){
 find.combined.non.empty.i <- function(TF.matrix.1, TF.matrix.2){
   TF.1.i <- apply(TF.matrix.1,1,function(r){any(r>0)})
   TF.2.i <- apply(TF.matrix.2,1,function(r){any(r>0)})
+  #browser()
+  #joint.TF.motifs <- intersect(names(TF.1.i),names(TF.2.i))
   return(TF.1.i | TF.2.i)
 }
 
@@ -256,8 +259,8 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   TF.hits <- TFBS.in.features[TF.hit.count>0]
   
   # Create zero matrix
-  TF.motif.matrix <- matrix(0, nrow = length(TF.hits), ncol=length(features.in.region))
-  rownames(TF.motif.matrix) <- names(TF.hits)
+  TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
+  rownames(TF.motif.matrix) <- names(TFBS.data)
   colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
   
   # Loop over all TFBS binding events which overlapped features in the gene region
