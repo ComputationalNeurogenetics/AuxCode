@@ -65,29 +65,36 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families=NULL, cluster.n
       TF.used <- TF.used[TF.used %in% names(TF.mat.1.expr)]
     }
     
+    max.per.feat.score <- max(TF.mat.1$per.feat.mat, TF.mat.2$per.feat.mat)
+    if (max.per.feat.score==0){max.per.feat.score<-1}
+    col_fun = colorRamp2(c(0, max.per.feat.score), c("white", "darkgreen"))
+    
     # Plot 1
     TF.mat.to.plot <- TF.mat.1$per.feat.mat[TF.used,]
-    col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
+    
     if (!is.null(TF.families)){
       row.split <- TF.families[rownames(TF.mat.to.plot)]
     } else {
       row.split <- NULL
     }
     # Format Links data to col_ha if present
-    if (!is.null(links.data)){
-      scores <- rep(0, ncol(TF.mat.1$acc))
-      names(scores) <- colnames(TF.mat.1$acc)
-      
-      scores.tmp <- links.data[[1]]$score
-      names(scores.tmp) <- links.data[[1]]$peak
-      
-      scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
-      
-      scores[names(scores.tmp)] <- scores.tmp
-      # TODO: This seems to fail if all scores are 0, needs to be handled properly
-      col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
-    } else {
-      col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
+    if (!is.null(links.data) & length(links.data[[1]])>0){
+      overlapping.links <- any(StringToGRanges(links.data[[1]]$peak) %over% StringToGRanges(colnames(TF.mat.to.plot))==TRUE)
+      if (overlapping.links){
+        scores <- rep(0, ncol(TF.mat.1$acc))
+        names(scores) <- colnames(TF.mat.1$acc)
+        
+        scores.tmp <- links.data[[1]]$score
+        names(scores.tmp) <- links.data[[1]]$peak
+        
+        scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
+        
+        scores[names(scores.tmp)] <- scores.tmp
+        # TODO: This seems to fail if all scores are 0, needs to be handled properly
+        col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
+        }
+      } else {
+        col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
     }
     
     # Format TF expression data into RowAnnotation if TF.exprs is TRUE
@@ -103,28 +110,31 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families=NULL, cluster.n
     
     # Plot 2
     TF.mat.to.plot <- TF.mat.2$per.feat.mat[TF.used,]
-    col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
     
     if (!is.null(TF.families)){
       row.split <- TF.families[rownames(TF.mat.to.plot)]
     } else {
       row.split <- NULL
     }
-    # Format Links data to col_ha if present
-    if (!is.null(links.data)){
-      scores <- rep(0, ncol(TF.mat.2$acc))
-      names(scores) <- colnames(TF.mat.2$acc)
+    # Format Links data to col_ha if present and overlap gene region
+    if (!is.null(links.data) & length(links.data[[2]])>0){
+      overlapping.links <- any(StringToGRanges(links.data[[2]]$peak) %over% StringToGRanges(colnames(TF.mat.to.plot))==TRUE)
+      if (overlapping.links){
+        scores <- rep(0, ncol(TF.mat.2$acc))
+        names(scores) <- colnames(TF.mat.2$acc)
       
-      scores.tmp <- links.data[[2]]$score
-      names(scores.tmp) <- links.data[[2]]$peak
+        scores.tmp <- links.data[[2]]$score
+        names(scores.tmp) <- links.data[[2]]$peak
       
-      scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
+        scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
       
-      scores[names(scores.tmp)] <- scores.tmp
-      col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
-    } else {
-      col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")))
+        scores[names(scores.tmp)] <- scores.tmp
+        col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
     }
+    } else {
+        col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")))
+    }
+    
     
     # Format TF expression data into RowAnnotation if TF.exprs is TRUE
     if (TF.exprs){
