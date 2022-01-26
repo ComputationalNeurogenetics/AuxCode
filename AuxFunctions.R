@@ -1,13 +1,21 @@
 # Some additional functions ----
 
-find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata){
+find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format){
   DefaultAssay(s.data) <- "RNA_name"
   gene.name.space <- rownames(s.data)
   TF.ids <- rownames(TF.footprint.data$per.feat.mat)
-  # Iterate through all TF motif ids in TF foootprint data
+  # Iterate through all TF motif ids in TF footprint data
   TF.gene.exprs <- sapply(TF.ids, function(motif.id){
-    # Look for official gene name for the motif from JASPAR db
-    gene.name.tmp <- str_to_title(str_to_lower(filter(TF.metadata, motif.ids==motif.id) %>% pull(gene.name)))
+    
+    if (TF.meta.format=="JASPAR"){
+      # Look for official gene name for the motif from JASPAR db derived TF metadata
+      gene.name.tmp <- str_to_title(str_to_lower(filter(TF.metadata, motif.ids==motif.id) %>% pull(gene.name)))
+    } else if (TF.meta.format=="HOCOMOCO") {
+      # Look for official gene name for the motif from Hocomoco metadata derived via Motif Db
+      
+      gene.name.tmp <- str_to_title(filter(TF.metadata, motif==str_remove(string = motif.id, pattern = "^_")) %>% pull(geneSymbol)) 
+      #gene.name.tmp <- str_to_title(TF.metadata[which(pull(TF.metadata, motif)==str_remove(string = motif.id, pattern = "^_")),geneSymbol])
+    }
     
     if (gene.name.tmp %in% gene.name.space) {
       # If gene name present in gene.name.space we return its mean expression in the cell group within s.data
@@ -40,7 +48,7 @@ find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata){
 }
 
 
-TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=NA, links.data=NULL, TF.exprs=FALSE, expr.cutoff=NULL){
+TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families=NULL, cluster.names=NA, links.data=NULL, TF.exprs=FALSE, expr.cutoff=NULL){
   if (all(!is.null(c(TF.mat.1,TF.mat.2)))){
     # Draw differential plot
     TF.used.i <- find.combined.non.empty.i(TF.mat.1$per.feat.mat, TF.mat.2$per.feat.mat)
@@ -60,8 +68,11 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     # Plot 1
     TF.mat.to.plot <- TF.mat.1$per.feat.mat[TF.used,]
     col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
-    row.split <- TF.families[rownames(TF.mat.to.plot)]
-    
+    if (!is.null(TF.families)){
+      row.split <- TF.families[rownames(TF.mat.to.plot)]
+    } else {
+      row.split <- NULL
+    }
     # Format Links data to col_ha if present
     if (!is.null(links.data)){
       scores <- rep(0, ncol(TF.mat.1$acc))
@@ -93,8 +104,12 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     # Plot 2
     TF.mat.to.plot <- TF.mat.2$per.feat.mat[TF.used,]
     col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
-    row.split <- TF.families[rownames(TF.mat.to.plot)]
     
+    if (!is.null(TF.families)){
+      row.split <- TF.families[rownames(TF.mat.to.plot)]
+    } else {
+      row.split <- NULL
+    }
     # Format Links data to col_ha if present
     if (!is.null(links.data)){
       scores <- rep(0, ncol(TF.mat.2$acc))
@@ -126,7 +141,12 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families, cluster.names=
     
     TF.mat.to.plot <- TF.diff.mat
     col_fun = colorRamp2(c(min(TF.mat.to.plot), 0, max(TF.mat.to.plot)), c("blue", "white", "red"))
-    row.split <- TF.families[rownames(TF.mat.to.plot)]
+    
+    if (!is.null(TF.families)){
+      row.split <- TF.families[rownames(TF.mat.to.plot)]
+    } else {
+      row.split <- NULL
+    }
     
     mean.acc.diff <- colMeans(TF.mat.1$acc)- colMeans(TF.mat.2$acc)
     col_ha <- columnAnnotation(acc.diff = anno_barplot(mean.acc.diff, height = unit(4, "cm"), gp = gpar(fill = ifelse(mean.acc.diff>0, "red", "blue"))))
@@ -257,6 +277,8 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   
   TF.hit.count <- sapply(TFBS.in.features, length)
   TF.hits <- TFBS.in.features[TF.hit.count>0]
+  
+  # TODO: Add print for found tfbs in features
   
   # Create zero matrix
   TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
