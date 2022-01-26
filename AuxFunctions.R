@@ -355,7 +355,7 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
   })
   # Name each Granges with corresponding gene_TFBSname.n
   names(out_list) <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
-  # TODO: Write here something that picks names for homocomoco motifs
+
   # Return the Granges list
   return(out_list)
   
