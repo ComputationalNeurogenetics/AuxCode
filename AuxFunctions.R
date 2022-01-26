@@ -310,7 +310,7 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
   
   # Reject the .txt, .pdf, etc. files with regex.
   # Apparently all sub folders are of form gene_TFBSname.n where n \in {1,2,3}
-  filenames <- list.files(res_path, pattern = "\\.[0-9]")
+  filenames <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
   # The actual loop as described in pseudo
   out_list <- lapply(filenames, function(name) {
     # Access the sub folder's contents.
@@ -354,7 +354,8 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
     return(bound.bed.granges)
   })
   # Name each Granges with corresponding gene_TFBSname.n
-  names(out_list) <- list.files(res_path, pattern = "\\.[0-9]")
+  names(out_list) <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
+  # TODO: Write here something that picks names for homocomoco motifs
   # Return the Granges list
   return(out_list)
   
