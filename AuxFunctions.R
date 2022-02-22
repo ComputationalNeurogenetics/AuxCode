@@ -327,6 +327,71 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   return(list(per.feat.mat=TF.motif.matrix))
 }
 
+
+get_BINDetect_snakemake_results <- function(res_path){
+  #'
+  #' Queries TOBIAS BINDetect result folder from Snakemake pipeline and selects result bed files.
+  #' 
+  #' -------------------------Briefly in pseudocode------------------------------
+  #' 
+  #' Access the BINDetect result folder
+  #' 
+  #' Initialize a result list
+  #' 
+  #' For each sub folder in the result folder do:
+  #'     Open the sub folder (henceforth sub folder = gene_TFBSname)
+  #'     Read the gene_TFBSname/beds/gene_TFBS_name_bound.bed for each condition
+  #'     Convert the bed file into a granges per each condition
+  #'     Append the granges to the result list
+  #'
+  #' Name the list after string vector (gene_TFBSname1, gene_TFBSname2,...)
+  #' 
+  #' Return the result list
+  #' ----------------------------------------------------------------------------
+  #' 
+  #' Requires installation of packages:
+  #'     GenomicRanges
+  #'     Magrittr
+  #'     
+  #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
+  #'
+  #'@returns a named list (Large list) consisting of granges for each result sub folder in @param res_path.
+  #'         The list can be conveniently accessed, for example, with out_list$gene_TFBSname
+  #'
+  #'@example get_BINDetect_snakemake_results("/path/to/TOBIAS_framework/outs/TOBIAS_BINDetect_output/")
+  #'
+  # 'Dependencies'
+  library(GenomicRanges)
+  library(magrittr)
+  
+  # Reject the .txt, .pdf, etc. files with regex.
+  # Apparently all sub folders are of form gene_TFBSname.n where n \in {1,2,3}
+  motif.res.folders <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
+  
+  # Drop non-folders from the list
+  motif.res.folder.i <- sapply(motif.res.folders,function(d){dir.exists(paste(res_path,d,sep=""))})
+  motif.res.folders <- motif.res.folders[motif.res.folder.i]
+  
+  # The actual loop as described in pseudo
+  out_list <- lapply(motif.res.folders, function(name) {
+    # Access the sub folder's contents.
+    # This should be of form res_path/gene_TFBSname.n/beds/
+    overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
+
+    # A little derail, but apparently the most simple way to name each column in the granges is 
+    # to convert the bed-file into a column-named data frame.
+    # The Granges inherits the column names and thus is can be indexed by column names.
+    overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
+    GenomicRanges::makeGRangesFromDataFrame(overview.df, keep.extra.columns = TRUE,
+                                                  seqnames.field = "TFBS_chr",
+                                                  start.field = "TFBS_start",
+                                                  end.field = "TFBS_end",
+                                                  strand.field = "TFBS_strand")
+    })
+  names(out_list) <- motif.res.folders
+  return(out_list)
+}
+
 get_BINDetect_results <- function(res_path, col.names="Default") {
   #'
   #' Queries TOBIAS BINDetect result folder and selects result bed files.
