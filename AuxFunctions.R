@@ -329,30 +329,7 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
 
 
 get_BINDetect_snakemake_results <- function(res_path){
-  #'
-  #' Queries TOBIAS BINDetect result folder from Snakemake pipeline and selects result bed files.
-  #' 
-  #' -------------------------Briefly in pseudocode------------------------------
-  #' 
-  #' Access the BINDetect result folder
-  #' 
-  #' Initialize a result list
-  #' 
-  #' For each sub folder in the result folder do:
-  #'     Open the sub folder (henceforth sub folder = gene_TFBSname)
-  #'     Read the gene_TFBSname/beds/gene_TFBS_name_bound.bed for each condition
-  #'     Convert the bed file into a granges per each condition
-  #'     Append the granges to the result list
-  #'
-  #' Name the list after string vector (gene_TFBSname1, gene_TFBSname2,...)
-  #' 
-  #' Return the result list
-  #' ----------------------------------------------------------------------------
-  #' 
-  #' Requires installation of packages:
-  #'     GenomicRanges
-  #'     Magrittr
-  #'     
+
   #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
   #'
   #'@returns a named list (Large list) consisting of granges for each result sub folder in @param res_path.
