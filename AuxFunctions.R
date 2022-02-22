@@ -290,6 +290,52 @@ find.combined.non.empty.i <- function(TF.matrix.1, TF.matrix.2){
   return(TF.1.i | TF.2.i)
 }
 
+# TODO: Next we need version of the following function accepting condition as argument to read snakemake generated data. Next test if latter part of the function works.
+TF.motifs.per.feature.snakemake <- function(features, TFBS.data, region, min.footprint.score=NULL, condition){
+  # Define features dimension (cols)
+  features.gr <- StringToGRanges(features)
+  names(features.gr) <- rownames(features)
+  features.in.region <- features.gr[features.gr %over% StringToGRanges(region)]
+  print(paste("Found ", length(features.in.region), " features in the region", sep=""))
+  
+  TFBS.gr.list <- GRangesList(TFBS.data)
+  TFBS.in.features <- lapply(TFBS.gr.list, function(tfbs){
+    
+    # Subset granges based on bound==1 on given condition
+    tfbs.colnames <- colnames(mcols(tfbs))
+    tfbs.i <- which(tfbs.colnames==paste(condition,"_bound",sep=""))
+    tfbs.filt <- tfbs[elementMetadata(tfbs)[,tfbs.i]==1,]
+    
+    
+    tmp.hits <- findOverlaps(query = tfbs.filt, subject = features.in.region, minoverlap = 1)
+    tmp.features <- GRangesToString(features.in.region[subjectHits(tmp.hits)])
+    tfbs.hits <- tfbs[queryHits(tmp.hits)]
+    if (length(tfbs.hits)>0){
+      tfbs.hits$feature <- tmp.features
+    }
+    return(tfbs.hits)
+  })
+  
+  TF.hit.count <- sapply(TFBS.in.features, length)
+  TF.hits <- TFBS.in.features[TF.hit.count>0]
+  
+  # TODO: Add print for found tfbs in features
+  
+  # Create zero matrix
+  TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
+  rownames(TF.motif.matrix) <- names(TFBS.data)
+  colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
+  
+  # Loop over all TFBS binding events which overlapped features in the gene region
+  lapply(names(TF.hits), function(tf){
+    feature <- TF.hits[[tf]]$feature
+    avg.footprint.score.per.feat <- tapply(INDEX=feature, X=TF.hits[[tf]]$footprint_score, FUN=mean)
+    TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
+  })
+  return(list(per.feat.mat=TF.motif.matrix))
+}
+
+
 TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.score=NULL){
   # Define features dimension (cols)
   features.gr <- StringToGRanges(features)
