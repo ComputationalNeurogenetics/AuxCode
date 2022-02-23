@@ -1,6 +1,6 @@
 # Some additional functions ----
 
-find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format){
+find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format, TOBIAS.format="TOBIAS"){
   DefaultAssay(s.data) <- "RNA_name"
   gene.name.space <- rownames(s.data)
   TF.ids <- rownames(TF.footprint.data$per.feat.mat)
@@ -12,9 +12,11 @@ find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format)
       gene.name.tmp <- str_to_title(str_to_lower(filter(TF.metadata, motif.ids==motif.id) %>% pull(gene.name)))
     } else if (TF.meta.format=="HOCOMOCO") {
       # Look for official gene name for the motif from Hocomoco metadata derived via Motif Db
-      
-      gene.name.tmp <- str_to_title(filter(TF.metadata, motif==str_remove(string = motif.id, pattern = "^_")) %>% pull(geneSymbol)) 
-      #gene.name.tmp <- str_to_title(TF.metadata[which(pull(TF.metadata, motif)==str_remove(string = motif.id, pattern = "^_")),geneSymbol])
+      if (TOBIAS.format=="TOBIAS"){
+        gene.name.tmp <- str_to_title(filter(TF.metadata, motif==str_remove(string = motif.id, pattern = "^_")) %>% pull(geneSymbol)) 
+      } else if (TOBIAS.format=="SNAKEMAKE"){
+        gene.name.tmp <- str_to_title(filter(TF.metadata, Model==str_remove(string = motif.id, pattern = "^.*\\.[:upper:]_")) %>% pull(geneSymbol)) 
+      }
     }
     
     if (gene.name.tmp %in% gene.name.space) {
