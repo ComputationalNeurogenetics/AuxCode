@@ -1,5 +1,56 @@
 # Some additional functions ----
 
+
+
+
+TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta.data, TOBIAS.format="SNAKEMAKE", TF.meta.format="HOCOMOCO"){
+  # Wrapper function to plot multiple TOBIAS heatmaps over conditions and genes from one dataset
+  
+  # Looping over genes
+  for (g in genes){
+    gene.coords <- range(Annotation(s.data.di)[Annotation(s.data.di)$gene_name==g], ignore.strand=TRUE)
+    range.start <- start(gene.coords)
+    range.end <- end(gene.coords)
+    range.width <- 50000
+    # TODO: Get chrom from data objects
+    chr <- 2
+    
+    gene.region <- construct_range(chr,range.start,range.end,range.width)
+    features.gr <- StringToGRanges(rownames(s.data))
+    features.in.region <- GRangesToString(features.gr[features.gr %over% StringToGRanges(gene.region)])
+    
+    # Looping over conditions
+    for (cond in conditions){
+      TF.motifs.per.feat <- TF.motifs.per.feature.snakemake(features=features.in.region, TFBS.data=TFBS.data, region=gene.region, min.footprint.score=NULL, condition=cond)
+      TF.motifs.per.feat$acc <- as.matrix(FetchData(s.data, vars=features.in.region, cells = WhichCells(s.data, idents=cond)))
+  
+      s.data.subset <- subset(s.data, cells=WhichCells(s.data, idents=cond))
+      TF.motifs.per.feat$expr.pres <- find.TF.expr(TF.motifs.per.feat, s.data=s.data.subset, TF.metadata=TF.meta.data, TF.meta.format = TF.meta.format, TOBIAS.format = TOBIAS.format)
+      
+      s.data.subset <- LinkPeaks(object = s.data.subset,
+                               peak.assay="peaks",
+                               expression.assay="RNA_name",
+                               expression.slot = "data",
+                               gene.coords = NULL,
+                               distance = range.width,
+                               min.distance = NULL,
+                               min.cells = 10,
+                               method = "pearson",
+                               genes.use = gene.of.interest,
+                               n_sample = 200,
+                               pvalue_cutoff = 0.05,
+                               score_cutoff = 0.05,
+                               verbose = TRUE
+      )
+      
+      TF.plot <- TF.heatmap(TF.mat.1 = TF.motifs.per.feat,TF.families = NULL, cluster.names = c("Footprint score"),expr.cutoff=0.1,TF.exprs=TRUE, row.cluster = TRUE, links.data=list(Links(s.data.subset)))
+      draw(TF.plot, column_title = paste("E14, region.cluster: ", cond," ", g," region features with TF binding events",sep=""),column_title_gp = gpar(fontsize = 24))
+    }
+    
+    
+    }
+}
+
 find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format, TOBIAS.format="TOBIAS"){
   DefaultAssay(s.data) <- "RNA_name"
   gene.name.space <- rownames(s.data)
