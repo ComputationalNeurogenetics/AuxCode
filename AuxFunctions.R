@@ -3,15 +3,16 @@
 
 
 
-TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta.data, TOBIAS.format="SNAKEMAKE", TF.meta.format="HOCOMOCO"){
+TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta.data, range.width, TOBIAS.format="SNAKEMAKE", TF.meta.format="HOCOMOCO"){
   # Wrapper function to plot multiple TOBIAS heatmaps over conditions and genes from one dataset
-  
+  cond.number <- as.numeric(str_remove(string=cond, pattern="^.*\\."))
   # Looping over genes
   for (g in genes){
+    print(paste("Processing gene ", g, " of genes ", paste(genes, collapse = ","), sep=""))
     gene.coords <- range(Annotation(s.data.di)[Annotation(s.data.di)$gene_name==g], ignore.strand=TRUE)
     range.start <- start(gene.coords)
     range.end <- end(gene.coords)
-    range.width <- 50000
+    range.width <- range.width
     # TODO: Get chrom from data objects
     chr <- 2
     
@@ -21,10 +22,12 @@ TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta
     
     # Looping over conditions
     for (cond in conditions){
+      print(paste("Processing condition ", cond, " of conditions ", paste(conditions, collapse=","), sep=""))
+      cond.number <- as.numeric(str_remove(string=cond, pattern="^.*\\."))
       TF.motifs.per.feat <- TF.motifs.per.feature.snakemake(features=features.in.region, TFBS.data=TFBS.data, region=gene.region, min.footprint.score=NULL, condition=cond)
-      TF.motifs.per.feat$acc <- as.matrix(FetchData(s.data, vars=features.in.region, cells = WhichCells(s.data, idents=cond)))
+      TF.motifs.per.feat$acc <- as.matrix(FetchData(s.data, vars=features.in.region, cells = WhichCells(s.data, idents=cond.number)))
   
-      s.data.subset <- subset(s.data, cells=WhichCells(s.data, idents=cond))
+      s.data.subset <- subset(s.data, cells=WhichCells(s.data, idents=cond.number))
       TF.motifs.per.feat$expr.pres <- find.TF.expr(TF.motifs.per.feat, s.data=s.data.subset, TF.metadata=TF.meta.data, TF.meta.format = TF.meta.format, TOBIAS.format = TOBIAS.format)
       
       s.data.subset <- LinkPeaks(object = s.data.subset,
