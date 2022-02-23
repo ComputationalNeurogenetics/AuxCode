@@ -329,7 +329,11 @@ TF.motifs.per.feature.snakemake <- function(features, TFBS.data, region, min.foo
   # Loop over all TFBS binding events which overlapped features in the gene region
   lapply(names(TF.hits), function(tf){
     feature <- TF.hits[[tf]]$feature
-    avg.footprint.score.per.feat <- tapply(INDEX=feature, X=TF.hits[[tf]]$footprint_score, FUN=mean)
+    tfbs.colnames <- colnames(mcols(TF.hits[[tf]]))
+    tfbs.i <- which(tfbs.colnames==paste(condition,"_score",sep=""))
+    footprint.scores <- TF.hits[[tf]][,tfbs.i]
+      
+    avg.footprint.score.per.feat <- tapply(INDEX=feature, X=mcols(footprint.scores)[,1], FUN=mean)
     TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
   })
   return(list(per.feat.mat=TF.motif.matrix))
