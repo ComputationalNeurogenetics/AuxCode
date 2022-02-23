@@ -13,8 +13,7 @@ TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta
     range.start <- start(gene.coords)
     range.end <- end(gene.coords)
     range.width <- range.width
-    # TODO: Get chrom from data objects
-    chr <- 2
+    chr <- as.character(seqnames(gene.coords)@values) %>% str_remove(pattern = "[:lower:]{3}") %>% as.numeric()
     
     gene.region <- construct_range(chr,range.start,range.end,range.width)
     features.gr <- StringToGRanges(rownames(s.data))
@@ -25,8 +24,9 @@ TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta
       print(paste("Processing condition ", cond, " of conditions ", paste(conditions, collapse=","), sep=""))
       cond.number <- as.numeric(str_remove(string=cond, pattern="^.*\\."))
       TF.motifs.per.feat <- TF.motifs.per.feature.snakemake(features=features.in.region, TFBS.data=TFBS.data, region=gene.region, min.footprint.score=NULL, condition=cond)
-      TF.motifs.per.feat$acc <- as.matrix(FetchData(s.data, vars=features.in.region, cells = WhichCells(s.data, idents=cond.number)))
   
+      TF.motifs.per.feat$acc <- as.matrix(FetchData(s.data, vars=features.in.region, cells = WhichCells(s.data, idents=cond.number)))
+      
       s.data.subset <- subset(s.data, cells=WhichCells(s.data, idents=cond.number))
       TF.motifs.per.feat$expr.pres <- find.TF.expr(TF.motifs.per.feat, s.data=s.data.subset, TF.metadata=TF.meta.data, TF.meta.format = TF.meta.format, TOBIAS.format = TOBIAS.format)
       
@@ -346,7 +346,6 @@ find.combined.non.empty.i <- function(TF.matrix.1, TF.matrix.2){
   return(TF.1.i | TF.2.i)
 }
 
-# TODO: Next we need version of the following function accepting condition as argument to read snakemake generated data. Next test if latter part of the function works.
 TF.motifs.per.feature.snakemake <- function(features, TFBS.data, region, min.footprint.score=NULL, condition){
   # Define features dimension (cols)
   features.gr <- StringToGRanges(features)
@@ -361,8 +360,6 @@ TF.motifs.per.feature.snakemake <- function(features, TFBS.data, region, min.foo
     tfbs.colnames <- colnames(mcols(tfbs))
     tfbs.i <- which(tfbs.colnames==paste(condition,"_bound",sep=""))
     tfbs.filt <- tfbs[elementMetadata(tfbs)[,tfbs.i]==1,]
-    
-    
     tmp.hits <- findOverlaps(query = tfbs.filt, subject = features.in.region, minoverlap = 1)
     tmp.features <- GRangesToString(features.in.region[subjectHits(tmp.hits)])
     tfbs.hits <- tfbs[queryHits(tmp.hits)]
@@ -375,7 +372,7 @@ TF.motifs.per.feature.snakemake <- function(features, TFBS.data, region, min.foo
   TF.hit.count <- sapply(TFBS.in.features, length)
   TF.hits <- TFBS.in.features[TF.hit.count>0]
   
-  # TODO: Add print for found tfbs in features
+  print(paste("Found ", sum(TF.hit.count>0), " hits in the region", sep=""))
   
   # Create zero matrix
   TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
