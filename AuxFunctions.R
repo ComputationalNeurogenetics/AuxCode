@@ -1,53 +1,60 @@
 # Some additional functions ----
 
-
-
-
-TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta.data, range.width, TOBIAS.format="SNAKEMAKE", TF.meta.format="HOCOMOCO"){
+TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta.data, range.width, TOBIAS.format="SNAKEMAKE", TF.meta.format="HOCOMOCO", TF.filt=NULL){
   # Wrapper function to plot multiple TOBIAS heatmaps over conditions and genes from one dataset
+  cond <- conditions
   cond.number <- as.numeric(str_remove(string=cond, pattern="^.*\\."))
+  features.gr <- StringToGRanges(rownames(s.data))
   # Looping over genes
   for (g in genes){
     print(paste("Processing gene ", g, " of genes ", paste(genes, collapse = ","), sep=""))
-    gene.coords <- range(Annotation(s.data.di)[Annotation(s.data.di)$gene_name==g], ignore.strand=TRUE)
+    gene.coords <- range(Annotation(s.data)[Annotation(s.data)$gene_name==g], ignore.strand=TRUE)
     range.start <- start(gene.coords)
     range.end <- end(gene.coords)
     range.width <- range.width
-    chr <- as.character(seqnames(gene.coords)@values) %>% str_remove(pattern = "[:lower:]{3}") %>% as.numeric()
+    chr <- as.character(seqnames(gene.coords)@values) %>% str_remove(pattern = "[:lower:]{3}")
     
     gene.region <- construct_range(chr,range.start,range.end,range.width)
-    features.gr <- StringToGRanges(rownames(s.data))
     features.in.region <- GRangesToString(features.gr[features.gr %over% StringToGRanges(gene.region)])
     
     # Looping over conditions
     for (cond in conditions){
       print(paste("Processing condition ", cond, " of conditions ", paste(conditions, collapse=","), sep=""))
       cond.number <- as.numeric(str_remove(string=cond, pattern="^.*\\."))
-      TF.motifs.per.feat <- TF.motifs.per.feature.snakemake(features=features.in.region, TFBS.data=TFBS.data, region=gene.region, min.footprint.score=NULL, condition=cond)
+      TF.motifs.per.feat <- TF.motifs.per.feature.snakemake(features=features.in.region, TFBS.data=TFBS.data, features.in.region=features.in.region, region=gene.region, min.footprint.score=NULL, condition=cond)
   
       TF.motifs.per.feat$acc <- as.matrix(FetchData(s.data, vars=features.in.region, cells = WhichCells(s.data, idents=cond.number)))
       
       s.data.subset <- subset(s.data, cells=WhichCells(s.data, idents=cond.number))
       TF.motifs.per.feat$expr.pres <- find.TF.expr(TF.motifs.per.feat, s.data=s.data.subset, TF.metadata=TF.meta.data, TF.meta.format = TF.meta.format, TOBIAS.format = TOBIAS.format)
       
-      s.data.subset <- LinkPeaks(object = s.data.subset,
-                               peak.assay="peaks",
-                               expression.assay="RNA_name",
-                               expression.slot = "data",
-                               gene.coords = NULL,
-                               distance = range.width,
-                               min.distance = NULL,
-                               min.cells = 10,
-                               method = "pearson",
-                               genes.use = gene.of.interest,
-                               n_sample = 200,
-                               pvalue_cutoff = 0.05,
-                               score_cutoff = 0.05,
-                               verbose = TRUE
+      s.data.subset <- tryCatch({
+        LinkPeaks(object = s.data.subset,
+                  peak.assay="peaks",
+                  expression.assay="RNA_name",
+                  expression.slot = "data",
+                  gene.coords = NULL,
+                  distance = range.width,
+                  min.distance = NULL,
+                  min.cells = 10,
+                  method = "pearson",
+                  genes.use = g,
+                  n_sample = 200,
+                  pvalue_cutoff = 0.05,
+                  score_cutoff = 0.05,
+                  verbose = TRUE
+        )},
+          error = function(e){
+            s.data.subset 
+        }
       )
-      
-      TF.plot <- TF.heatmap(TF.mat.1 = TF.motifs.per.feat,TF.families = NULL, cluster.names = c("Footprint score"),expr.cutoff=0.1,TF.exprs=TRUE, row.cluster = TRUE, links.data=list(Links(s.data.subset)))
-      draw(TF.plot, column_title = paste("E14, region.cluster: ", cond," ", g," region features with TF binding events",sep=""),column_title_gp = gpar(fontsize = 24))
+
+      TF.plot <- TF.heatmap(TF.mat.1 = TF.motifs.per.feat, TF.filt = TF.filt, TF.families = NULL, cluster.names = c("Footprint score"),expr.cutoff=0.1,TF.exprs=TRUE, row.cluster = TRUE, links.data=list(Links(s.data.subset)))
+      tryCatch({
+        draw(TF.plot, column_title = paste("E14, region.cluster: ", cond," ", g," region features with TF binding events",sep=""),column_title_gp = gpar(fontsize = 24))
+      }, error=function(e){
+        print("Skipping drawing as no bindings detected")
+      })
     }
     
     
@@ -103,8 +110,11 @@ find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format,
   return(TF.gene.exprs)
 }
 
-TF.heatmap <- function(TF.mat.1=NULL, TF.families=NULL, cluster.names=NA, links.data=NULL, TF.exprs=FALSE, expr.cutoff=NULL, row.cluster=FALSE, clustering_distance_rows="euclidean",clustering_method_rows = "complete"){
+TF.heatmap <- function(TF.mat.1=NULL, TF.families=NULL, TF.filt=NULL, cluster.names=NA, links.data=NULL, TF.exprs=FALSE, expr.cutoff=NULL, row.cluster=FALSE, clustering_distance_rows="euclidean",clustering_method_rows = "complete"){
     TF.used <- rownames(TF.mat.1$per.feat.mat)
+    if (!is.null(TF.filt)){
+      TF.used <- TF.used[TF.used %in% paste(TF.filt,TF.filt,sep="_")]
+    }
     TF.mat.1.expr <- TF.mat.1$expr.pres[TF.used]
     
     if (!is.null(expr.cutoff)){
@@ -112,46 +122,52 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.families=NULL, cluster.names=NA, links.
       TF.expr.filt.names <- names(TF.expr.filt.l)[TF.expr.filt.l==TRUE]
       TF.mat.1.expr <- TF.mat.1.expr[TF.expr.filt.l]
       TF.used <- TF.used[TF.used %in% names(TF.mat.1.expr)]
-    } 
+    }
     
     TF.mat.to.plot <- TF.mat.1$per.feat.mat[TF.used,]
-    col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
     
-    if (!is.null(TF.families) & row.cluster==FALSE){
-      row.split <- TF.families[rownames(TF.mat.to.plot)]
-    } else {
-      row.split <- NULL
-    }
+    if (!max(TF.mat.to.plot)==0){
     
-    # Format TF expression data into RowAnnotation if TF.exprs is TRUE
-    if (TF.exprs){
-      row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.1$expr.pres[TF.used]))
-    } else 
-    {
-      row_ha <- NULL
-    }
-    
-    # Format Links data to col_ha if present and overlap gene region
-    if (!is.null(links.data) & length(links.data[[1]])>0){
-      overlapping.links <- any(StringToGRanges(links.data[[1]]$peak) %over% StringToGRanges(colnames(TF.mat.to.plot))==TRUE)
-      if (overlapping.links){
-        scores <- rep(0, ncol(TF.mat.1$acc))
-        names(scores) <- colnames(TF.mat.1$acc)
-        
-        scores.tmp <- links.data[[1]]$score
-        names(scores.tmp) <- links.data[[1]]$peak
-        
-        scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
-        
-        scores[names(scores.tmp)] <- scores.tmp
-        col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
+      col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
+  
+      if (!is.null(TF.families) & row.cluster==FALSE){
+        row.split <- TF.families[rownames(TF.mat.to.plot)]
+      } else {
+        row.split <- NULL
       }
+      
+      # Format TF expression data into RowAnnotation if TF.exprs is TRUE
+      if (TF.exprs){
+        row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.1$expr.pres[TF.used]))
+        row_ha <- re_size(row_ha,width=unit(1,"inch"))
+      } else {
+        row_ha <- NULL
+      }
+      
+      # Format Links data to col_ha if present and overlap gene region
+      if (!is.null(links.data) & length(links.data[[1]])>0){
+        overlapping.links <- any(StringToGRanges(links.data[[1]]$peak) %over% StringToGRanges(colnames(TF.mat.to.plot))==TRUE)
+        if (overlapping.links){
+          scores <- rep(0, ncol(TF.mat.1$acc))
+          names(scores) <- colnames(TF.mat.1$acc)
+          
+          scores.tmp <- links.data[[1]]$score
+          names(scores.tmp) <- links.data[[1]]$peak
+          
+          scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
+          
+          scores[names(scores.tmp)] <- scores.tmp
+          col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
+        }
+      } else {
+        col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
+      }
+      
+      TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = row.cluster, cluster_columns = FALSE, show_row_dend = TRUE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha,  right_annotation = row_ha, clustering_distance_rows=clustering_distance_rows, clustering_method_rows=clustering_method_rows)
+      return(TF.1.plot)
     } else {
-      col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
+      print("No bindings detected")
     }
-    
-    TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = row.cluster, cluster_columns = FALSE, show_row_dend = TRUE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha,  right_annotation = row_ha, clustering_distance_rows=clustering_distance_rows, clustering_method_rows=clustering_method_rows)
-    return(TF.1.plot)
   
 }
 
@@ -346,15 +362,21 @@ find.combined.non.empty.i <- function(TF.matrix.1, TF.matrix.2){
   return(TF.1.i | TF.2.i)
 }
 
-TF.motifs.per.feature.snakemake <- function(features, TFBS.data, region, min.footprint.score=NULL, condition){
+TF.motifs.per.feature.snakemake <- function(features, TFBS.data, region, features.in.region=NULL, min.footprint.score=NULL, condition){
   # Define features dimension (cols)
   features.gr <- StringToGRanges(features)
   names(features.gr) <- rownames(features)
-  features.in.region <- features.gr[features.gr %over% StringToGRanges(region)]
+  if (is.null(features.in.region)){
+    features.in.region <- features.gr[features.gr %over% StringToGRanges(region)]
+  } else {
+    features.in.region <- StringToGRanges(features.in.region)
+  }
   print(paste("Found ", length(features.in.region), " features in the region", sep=""))
+  if (!class(TFBS.data)=="CompressedGRangesList"){
+    TFBS.data <- GRangesList(TFBS.data)
+  } 
   
-  TFBS.gr.list <- GRangesList(TFBS.data)
-  TFBS.in.features <- lapply(TFBS.gr.list, function(tfbs){
+  TFBS.in.features <- lapply(TFBS.data, function(tfbs){
     
     # Subset granges based on bound==1 on given condition
     tfbs.colnames <- colnames(mcols(tfbs))
