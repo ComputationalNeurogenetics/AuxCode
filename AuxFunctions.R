@@ -1,5 +1,15 @@
 # Some additional functions ----
 
+tf.idf.matrix <-function(data.matrix,log.tf=FALSE){
+  idf <- apply(data.matrix,2,function(x){log(length(x)/sum(x>0))})
+  if (log.tf){
+    tf.idf.mat <- t(apply(data.matrix,1,function(x){((log(1+x)))*idf}))
+  } else {
+    tf.idf.mat <- t(apply(data.matrix,1,function(x){((x/sum(x)))*idf}))
+  }
+  return(tf.idf.mat)
+}
+
 TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta.data, range.width, TOBIAS.format="SNAKEMAKE", TF.meta.format="HOCOMOCO", TF.filt=NULL){
   # Wrapper function to plot multiple TOBIAS heatmaps over conditions and genes from one dataset
   cond <- conditions
@@ -362,11 +372,11 @@ find.combined.non.empty.i <- function(TF.matrix.1, TF.matrix.2){
   return(TF.1.i | TF.2.i)
 }
 
-TF.motifs.per.feature.snakemake <- function(features, TFBS.data, region, features.in.region=NULL, min.footprint.score=NULL, condition){
+TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, features.in.region=NULL, min.footprint.score=NULL, condition){
   # Define features dimension (cols)
-  features.gr <- StringToGRanges(features)
-  names(features.gr) <- rownames(features)
-  if (is.null(features.in.region)){
+  if (!is.null(features)){
+    features.gr <- StringToGRanges(features)
+    names(features.gr) <- rownames(features)
     features.in.region <- features.gr[features.gr %over% StringToGRanges(region)]
   } else {
     features.in.region <- StringToGRanges(features.in.region)
