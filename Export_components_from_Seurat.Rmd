@@ -1,0 +1,45 @@
+---
+title: "R Notebook of of exporting scATAC SVD components for VIA"
+output: html_notebook
+---
+
+```{r}
+library(Signac)
+library(dplyr)
+library(tidyverse)
+source("../generic code/AuxFunctions.R")
+```
+
+```{r Variables}
+run.date <- format(Sys.time(), "%d.%m.%y")
+sample <- "E12R1"
+```
+
+```{r}
+s.data.r1 <- readRDS("../E12R1/scATAC_data/E12_R1_DownstreamReady_nmm_.240322.Rds")
+rv2 <- readRDS("nmm_rv2_barcs_annotated_transferred_labels_umapCoords_violinGenes_JP300322.Rds")
+```
+
+```{r}
+DefaultAssay(s.data.r1) <- "peaks"
+cell.embeddings <- s.data.r1@reductions$lsi@cell.embeddings[,2:30]
+```
+
+```{r}
+colors.tb <- bind_rows(lapply(color.vector(Idents(s.data.r1)), function(x){
+  col2rgb(x)[,1]/255
+  }))
+```
+
+```{r}
+embeddings.tmp <- as.tibble(rownames_to_column(cbind(cell.embeddings, colors.tb), "barcode"))
+
+embeddings.out <- left_join(rv2, embeddings.tmp, by=("barcode"="barcode"))
+
+write.csv(x= embeddings.out, row.names = FALSE, file=paste("Cell.embeddings.",sample,".",run.date,".csv",sep=""))
+```
+
+
+
+
+
