@@ -669,10 +669,13 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
   obj[['RNA_name']] <- obj[['RNA']]
   RNA <- obj@assays$RNA_name
   
+  tmp.conv <- tibble(id=RNA@counts@Dimnames[[1]], symbol=newnames)
+  
   if (nrow(RNA) == length(newnames)) {
     if (length(RNA@counts)) RNA@counts@Dimnames[[1]]            <- newnames
     if (length(RNA@data)) RNA@data@Dimnames[[1]]                <- newnames
-    if (length(RNA@scale.data)) RNA@scale.data@Dimnames[[1]]    <- newnames
+    #if (length(RNA@scale.data)) RNA@scale.data@Dimnames[[1]]    <- newnames
+    if (length(RNA@scale.data)) dimnames(RNA@scale.data)[[1]]    <- tmp.conv$symbol[match(dimnames(RNA@scale.data)[[1]],tmp.conv$id)]
   } else {"Unequal gene sets: nrow(RNA) != nrow(newnames)"}
   obj@assays$RNA_name <- RNA
   return(obj)
