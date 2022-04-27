@@ -519,7 +519,7 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F){
                                               start.field = "TFBS_start",
                                               end.field = "TFBS_end",
                                               strand.field = "TFBS_strand")
-    }, cores=4)
+    }, mc.cores=4)
     names(out_list) <- motif.res.folders
     
     
