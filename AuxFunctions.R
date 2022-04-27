@@ -463,7 +463,7 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
 }
 
 
-get_BINDetect_snakemake_results <- function(res_path){
+get_BINDetect_snakemake_results <- function(res_path,parallel=F){
 
   #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
   #'
@@ -484,6 +484,7 @@ get_BINDetect_snakemake_results <- function(res_path){
   motif.res.folder.i <- sapply(motif.res.folders,function(d){dir.exists(paste(res_path,d,sep=""))})
   motif.res.folders <- motif.res.folders[motif.res.folder.i]
   
+  if (!parallel){
   # The actual loop as described in pseudo
   out_list <- lapply(motif.res.folders, function(name) {
     # Access the sub folder's contents.
@@ -501,6 +502,28 @@ get_BINDetect_snakemake_results <- function(res_path){
                                                   strand.field = "TFBS_strand")
     })
   names(out_list) <- motif.res.folders
+  } else {
+    require(parallel)
+    # The actual loop as described in pseudo
+    out_list <- mclapply(motif.res.folders, function(name) {
+      # Access the sub folder's contents.
+      # This should be of form res_path/gene_TFBSname.n/beds/
+      overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
+      
+      # A little derail, but apparently the most simple way to name each column in the granges is 
+      # to convert the bed-file into a column-named data frame.
+      # The Granges inherits the column names and thus is can be indexed by column names.
+      overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
+      GenomicRanges::makeGRangesFromDataFrame(overview.df, keep.extra.columns = TRUE,
+                                              seqnames.field = "TFBS_chr",
+                                              start.field = "TFBS_start",
+                                              end.field = "TFBS_end",
+                                              strand.field = "TFBS_strand")
+    }, cores=4)
+    names(out_list) <- motif.res.folders
+    
+    
+  }
   return(out_list)
 }
 
@@ -669,13 +692,13 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
   obj[['RNA_name']] <- obj[['RNA']]
   RNA <- obj@assays$RNA_name
   
-  tmp.conv <- tibble(id=RNA@counts@Dimnames[[1]], symbol=newnames)
+  #tmp.conv <- tibble(id=RNA@counts@Dimnames[[1]], symbol=newnames)
   
   if (nrow(RNA) == length(newnames)) {
     if (length(RNA@counts)) RNA@counts@Dimnames[[1]]            <- newnames
     if (length(RNA@data)) RNA@data@Dimnames[[1]]                <- newnames
-    #if (length(RNA@scale.data)) RNA@scale.data@Dimnames[[1]]    <- newnames
-    if (length(RNA@scale.data)) dimnames(RNA@scale.data)[[1]]    <- tmp.conv$symbol[match(dimnames(RNA@scale.data)[[1]],tmp.conv$id)]
+    if (length(RNA@scale.data)) RNA@scale.data@Dimnames[[1]]    <- newnames
+    #if (length(RNA@scale.data)) dimnames(RNA@scale.data)[[1]]    <- tmp.conv$symbol[match(dimnames(RNA@scale.data)[[1]],tmp.conv$id)]
   } else {"Unequal gene sets: nrow(RNA) != nrow(newnames)"}
   obj@assays$RNA_name <- RNA
   return(obj)
