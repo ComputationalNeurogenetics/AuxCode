@@ -1,5 +1,17 @@
 # Some additional functions ----
 
+scale.by.acc <- function(tf.idf.mat, acc.mat, dummy=FALSE){
+  if (dummy){
+    return(tf.idf.mat)
+  }
+  feat.ids <- str_extract(string = colnames(tf.idf.mat), pattern = "chr[[:digit:]]{1,2}-[[:digit:]]+-[[:digit:]]+")
+  cluster.ids <- str_extract(string = rownames(tf.idf.mat), pattern = "[[:digit:]]{1,2}")
+  
+  clust.ids.i <- match(cluster.ids, as.numeric(acc.mat$ident))
+  tmp.acc <- data.frame(rep(acc.mat[,unique(feat.ids)], times=as.numeric(table(feat.ids))))[clust.ids.i,]
+  tf.idf.mat*as.matrix(tmp.acc)
+}
+
 tf.idf.matrix <-function(data.matrix,log.tf=FALSE){
   idf <- apply(data.matrix,2,function(x){log(length(x)/sum(x>0))})
   if (log.tf){
@@ -470,7 +482,7 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F){
   #'@returns a named list (Large list) consisting of granges for each result sub folder in @param res_path.
   #'         The list can be conveniently accessed, for example, with out_list$gene_TFBSname
   #'
-  #'@example get_BINDetect_snakemake_results("/path/to/TOBIAS_framework/outs/TOBIAS_BINDetect_output/")
+  #'@example get_BINDetect_snakemake_results("/path/to/TOBIAS_framework/outs/TFBS/")
   #'
   # 'Dependencies'
   library(GenomicRanges)
@@ -495,6 +507,7 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F){
     # to convert the bed-file into a column-named data frame.
     # The Granges inherits the column names and thus is can be indexed by column names.
     overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
+    # TODO: This could be significantly faster if one first catenates all files and reads it as one pass into df and then GR
     GenomicRanges::makeGRangesFromDataFrame(overview.df, keep.extra.columns = TRUE,
                                                   seqnames.field = "TFBS_chr",
                                                   start.field = "TFBS_start",
