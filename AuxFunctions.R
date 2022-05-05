@@ -6,7 +6,7 @@ scale.by.acc <- function(tf.idf.mat, acc.mat, dummy=FALSE){
   }
   feat.ids <- str_extract(string = colnames(tf.idf.mat), pattern = "chr[[:digit:]]{1,2}-[[:digit:]]+-[[:digit:]]+")
   cluster.ids <- str_extract(string = rownames(tf.idf.mat), pattern = "[[:digit:]]{1,2}")
-  
+
   clust.ids.i <- match(cluster.ids, as.numeric(acc.mat$ident))
   tmp.acc <- data.frame(rep(acc.mat[,unique(feat.ids)], times=as.numeric(table(feat.ids))))[clust.ids.i,]
   tf.idf.mat*as.matrix(tmp.acc)
@@ -35,21 +35,21 @@ TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta
     range.end <- end(gene.coords)
     range.width <- range.width
     chr <- as.character(seqnames(gene.coords)@values) %>% str_remove(pattern = "[:lower:]{3}")
-    
+
     gene.region <- construct_range(chr,range.start,range.end,range.width)
     features.in.region <- GRangesToString(features.gr[features.gr %over% StringToGRanges(gene.region)])
-    
+
     # Looping over conditions
     for (cond in conditions){
       print(paste("Processing condition ", cond, " of conditions ", paste(conditions, collapse=","), sep=""))
       cond.number <- as.numeric(str_remove(string=cond, pattern="^.*\\."))
       TF.motifs.per.feat <- TF.motifs.per.feature.snakemake(features=features.in.region, TFBS.data=TFBS.data, features.in.region=features.in.region, region=gene.region, min.footprint.score=NULL, condition=cond)
-  
+
       TF.motifs.per.feat$acc <- as.matrix(FetchData(s.data, vars=features.in.region, cells = WhichCells(s.data, idents=cond.number)))
-      
+
       s.data.subset <- subset(s.data, cells=WhichCells(s.data, idents=cond.number))
       TF.motifs.per.feat$expr.pres <- find.TF.expr(TF.motifs.per.feat, s.data=s.data.subset, TF.metadata=TF.meta.data, TF.meta.format = TF.meta.format, TOBIAS.format = TOBIAS.format)
-      
+
       s.data.subset <- tryCatch({
         LinkPeaks(object = s.data.subset,
                   peak.assay="peaks",
@@ -67,7 +67,7 @@ TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta
                   verbose = TRUE
         )},
           error = function(e){
-            s.data.subset 
+            s.data.subset
         }
       )
 
@@ -78,8 +78,8 @@ TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta
         print("Skipping drawing as no bindings detected")
       })
     }
-    
-    
+
+
     }
 }
 
@@ -89,19 +89,19 @@ find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format,
   TF.ids <- rownames(TF.footprint.data$per.feat.mat)
   # Iterate through all TF motif ids in TF footprint data
   TF.gene.exprs <- sapply(TF.ids, function(motif.id){
-    
+
     if (TF.meta.format=="JASPAR"){
       # Look for official gene name for the motif from JASPAR db derived TF metadata
       gene.name.tmp <- str_to_title(str_to_lower(filter(TF.metadata, motif.ids==motif.id) %>% pull(gene.name)))
     } else if (TF.meta.format=="HOCOMOCO") {
       # Look for official gene name for the motif from Hocomoco metadata derived via Motif Db
       if (TOBIAS.format=="TOBIAS"){
-        gene.name.tmp <- str_to_title(filter(TF.metadata, motif==str_remove(string = motif.id, pattern = "^_")) %>% pull(geneSymbol)) 
+        gene.name.tmp <- str_to_title(filter(TF.metadata, motif==str_remove(string = motif.id, pattern = "^_")) %>% pull(geneSymbol))
       } else if (TOBIAS.format=="SNAKEMAKE"){
-        gene.name.tmp <- str_to_title(filter(TF.metadata, Model==str_remove(string = motif.id, pattern = "^.*\\.[:upper:]_")) %>% pull(geneSymbol)) 
+        gene.name.tmp <- str_to_title(filter(TF.metadata, Model==str_remove(string = motif.id, pattern = "^.*\\.[:upper:]_")) %>% pull(geneSymbol))
       }
     }
-    
+
     if (gene.name.tmp %in% gene.name.space) {
       # If gene name present in gene.name.space we return its mean expression in the cell group within s.data
       gene.expr <- colMeans(FetchData(s.data, vars=gene.name.tmp))
@@ -111,7 +111,7 @@ find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format,
       gene.names.tmp <- unlist(str_split(string=gene.name.tmp, pattern="::"))
       gene.names.tmp <- gene.names.tmp[gene.names.tmp %in% gene.name.space]
       gene.expr <- colMeans(FetchData(s.data, vars=gene.names.tmp))
-      
+
       if (length(gene.expr)>1) {
         # If there are mean expression values for more than one gene we check if either is zero, then both are set to zero, otherwise we take mean of those.
         if (any(gene.expr==0)) {
@@ -138,26 +138,26 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.families=NULL, TF.filt=NULL, cluster.na
       TF.used <- TF.used[TF.used %in% paste(TF.filt,TF.filt,sep="_")]
     }
     TF.mat.1.expr <- TF.mat.1$expr.pres[TF.used]
-    
+
     if (!is.null(expr.cutoff)){
       TF.expr.filt.l <- (TF.mat.1.expr > expr.cutoff) & !is.na(TF.mat.1.expr)
       TF.expr.filt.names <- names(TF.expr.filt.l)[TF.expr.filt.l==TRUE]
       TF.mat.1.expr <- TF.mat.1.expr[TF.expr.filt.l]
       TF.used <- TF.used[TF.used %in% names(TF.mat.1.expr)]
     }
-    
+
     TF.mat.to.plot <- TF.mat.1$per.feat.mat[TF.used,]
-    
+
     if (!max(TF.mat.to.plot)==0){
-    
+
       col_fun = colorRamp2(c(0, max(TF.mat.to.plot)), c("white", "darkgreen"))
-  
+
       if (!is.null(TF.families) & row.cluster==FALSE){
         row.split <- TF.families[rownames(TF.mat.to.plot)]
       } else {
         row.split <- NULL
       }
-      
+
       # Format TF expression data into RowAnnotation if TF.exprs is TRUE
       if (TF.exprs){
         row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.1$expr.pres[TF.used]))
@@ -165,32 +165,32 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.families=NULL, TF.filt=NULL, cluster.na
       } else {
         row_ha <- NULL
       }
-      
+
       # Format Links data to col_ha if present and overlap gene region
       if (!is.null(links.data) & length(links.data[[1]])>0){
         overlapping.links <- any(StringToGRanges(links.data[[1]]$peak) %over% StringToGRanges(colnames(TF.mat.to.plot))==TRUE)
         if (overlapping.links){
           scores <- rep(0, ncol(TF.mat.1$acc))
           names(scores) <- colnames(TF.mat.1$acc)
-          
+
           scores.tmp <- links.data[[1]]$score
           names(scores.tmp) <- links.data[[1]]$peak
-          
+
           scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
-          
+
           scores[names(scores.tmp)] <- scores.tmp
           col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
         }
       } else {
         col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
       }
-      
+
       TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = row.cluster, cluster_columns = FALSE, show_row_dend = TRUE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha,  right_annotation = row_ha, clustering_distance_rows=clustering_distance_rows, clustering_method_rows=clustering_method_rows)
       return(TF.1.plot)
     } else {
       print("No bindings detected")
     }
-  
+
 }
 
 
@@ -199,10 +199,10 @@ TF.heatmap.diff <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families=NULL, clus
     # Draw differential plot
     TF.used.i <- find.combined.non.empty.i(TF.mat.1$per.feat.mat, TF.mat.2$per.feat.mat)
     TF.used <- names(TF.used.i[TF.used.i==TRUE])
-    
+
     TF.mat.1.expr <- TF.mat.1$expr.pres[TF.used]
     TF.mat.2.expr <- TF.mat.2$expr.pres[TF.used]
-    
+
     if (!is.null(expr.cutoff)){
       TF.expr.filt.l <- (TF.mat.1.expr > expr.cutoff | TF.mat.2.expr > expr.cutoff) & (!is.na(TF.mat.1.expr) & !is.na(TF.mat.2.expr))
       TF.expr.filt.names <- names(TF.expr.filt.l)[TF.expr.filt.l==TRUE]
@@ -210,14 +210,14 @@ TF.heatmap.diff <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families=NULL, clus
       TF.mat.2.expr <- TF.mat.2.expr[TF.expr.filt.l]
       TF.used <- TF.used[TF.used %in% names(TF.mat.1.expr)]
     }
-    
+
     max.per.feat.score <- max(TF.mat.1$per.feat.mat, TF.mat.2$per.feat.mat)
     if (max.per.feat.score==0){max.per.feat.score<-1}
     col_fun = colorRamp2(c(0, max.per.feat.score), c("white", "darkgreen"))
-    
+
     # Plot 1
     TF.mat.to.plot <- TF.mat.1$per.feat.mat[TF.used,]
-    
+
     if (!is.null(TF.families)){
       row.split <- TF.families[rownames(TF.mat.to.plot)]
     } else {
@@ -229,12 +229,12 @@ TF.heatmap.diff <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families=NULL, clus
       if (overlapping.links){
         scores <- rep(0, ncol(TF.mat.1$acc))
         names(scores) <- colnames(TF.mat.1$acc)
-        
+
         scores.tmp <- links.data[[1]]$score
         names(scores.tmp) <- links.data[[1]]$peak
-        
+
         scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
-        
+
         scores[names(scores.tmp)] <- scores.tmp
         # TODO: This seems to fail if all scores are 0, needs to be handled properly
         col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
@@ -242,21 +242,21 @@ TF.heatmap.diff <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families=NULL, clus
       } else {
         col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
     }
-    
+
     # Format TF expression data into RowAnnotation if TF.exprs is TRUE
     if (TF.exprs){
       #browser()
       row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.1.expr))
-    } else 
+    } else
       {
       row_ha <- NULL
     }
-    
+
     TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[1], heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha, right_annotation = row_ha)
-    
+
     # Plot 2
     TF.mat.to.plot <- TF.mat.2$per.feat.mat[TF.used,]
-    
+
     if (!is.null(TF.families)){
       row.split <- TF.families[rownames(TF.mat.to.plot)]
     } else {
@@ -268,55 +268,55 @@ TF.heatmap.diff <- function(TF.mat.1=NULL, TF.mat.2=NULL, TF.families=NULL, clus
       if (overlapping.links){
         scores <- rep(0, ncol(TF.mat.2$acc))
         names(scores) <- colnames(TF.mat.2$acc)
-      
+
         scores.tmp <- links.data[[2]]$score
         names(scores.tmp) <- links.data[[2]]$peak
-      
+
         scores.tmp <- scores.tmp[names(scores.tmp) %in% names(scores)]
-      
+
         scores[names(scores.tmp)] <- scores.tmp
         col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")), links=anno_barplot(scores, height = unit(4, "cm")))
     }
     } else {
         col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.2$acc, height = unit(4, "cm")))
     }
-    
-    
+
+
     # Format TF expression data into RowAnnotation if TF.exprs is TRUE
     if (TF.exprs){
       row_ha <- rowAnnotation(expr = anno_barplot(TF.mat.2.expr))
-    } else 
+    } else
     {
       row_ha <- NULL
     }
-    
+
     TF.2.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", column_title = cluster.names[2], heatmap_legend_param=list(title=cluster.names[2]), bottom_annotation = col_ha, right_annotation = row_ha)
-    
+
     # Calculate differential
     TF.diff.mat <- TF.diff(TF.mat.1$per.feat.mat[TF.used,],TF.mat.2$per.feat.mat[TF.used,])
-    
+
     TF.mat.to.plot <- TF.diff.mat
     col_fun = colorRamp2(c(min(TF.mat.to.plot), 0, max(TF.mat.to.plot)), c("blue", "white", "red"))
-    
+
     if (!is.null(TF.families)){
       row.split <- TF.families[rownames(TF.mat.to.plot)]
     } else {
       row.split <- NULL
     }
-    
+
     mean.acc.diff <- colMeans(TF.mat.1$acc)- colMeans(TF.mat.2$acc)
     col_ha <- columnAnnotation(acc.diff = anno_barplot(mean.acc.diff, height = unit(4, "cm"), gp = gpar(fill = ifelse(mean.acc.diff>0, "red", "blue"))))
-    
+
     # Format TF expression data into RowAnnotation if TF.exprs is TRUE
     if (TF.exprs){
       #browser()
       diff.exp <- TF.mat.1$expr.pres[TF.used] - TF.mat.2$expr.pres[TF.used]
       row_ha <- rowAnnotation(expr = anno_barplot(diff.exp))
-    } else 
+    } else
     {
       row_ha <- NULL
     }
-    
+
     TF.3.plot <- Heatmap(TF.mat.to.plot, cluster_rows = FALSE, cluster_columns = FALSE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top",  column_title = "Difference", heatmap_legend_param=list(title="Diff (1st-2nd)"), bottom_annotation = col_ha, right_annotation = row_ha)
     TF.plot.combined <- TF.1.plot + TF.2.plot + TF.3.plot
     return(TF.plot.combined)
@@ -349,14 +349,14 @@ find_TFBS_range <- function(tobias_set, region, filter.bound=F, return.empty=F){
       return(ts)
     }
   })
-  
+
   ts.hits.count <- sapply(hits,length)
   if (return.empty){
     ts.hits <- hits
   } else {
     ts.hits <- hits[ts.hits.count>0]
   }
-  return(ts.hits) 
+  return(ts.hits)
 }
 
 Find.TF.families <- function(TOBIAS_res){
@@ -396,10 +396,10 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
   print(paste("Found ", length(features.in.region), " features in the region", sep=""))
   if (!class(TFBS.data)=="CompressedGRangesList"){
     TFBS.data <- GRangesList(TFBS.data)
-  } 
-  
+  }
+
   TFBS.in.features <- lapply(TFBS.data, function(tfbs){
-    
+
     # Subset granges based on bound==1 on given condition
     tfbs.colnames <- colnames(mcols(tfbs))
     tfbs.i <- which(tfbs.colnames==paste(condition,"_bound",sep=""))
@@ -412,24 +412,24 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
     }
     return(tfbs.hits)
   })
-  
+
   TF.hit.count <- sapply(TFBS.in.features, length)
   TF.hits <- TFBS.in.features[TF.hit.count>0]
-  
+
   print(paste("Found ", sum(TF.hit.count>0), " hits in the region", sep=""))
-  
+
   # Create zero matrix
   TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
   rownames(TF.motif.matrix) <- names(TFBS.data)
   colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
-  
+
   # Loop over all TFBS binding events which overlapped features in the gene region
   lapply(names(TF.hits), function(tf){
     feature <- TF.hits[[tf]]$feature
     tfbs.colnames <- colnames(mcols(TF.hits[[tf]]))
     tfbs.i <- which(tfbs.colnames==paste(condition,"_score",sep=""))
     footprint.scores <- TF.hits[[tf]][,tfbs.i]
-      
+
     avg.footprint.score.per.feat <- tapply(INDEX=feature, X=mcols(footprint.scores)[,1], FUN=mean)
     TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
   })
@@ -443,7 +443,7 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   names(features.gr) <- rownames(features)
   features.in.region <- features.gr[features.gr %over% StringToGRanges(region)]
   print(paste("Found ", length(features.in.region), " features in the region", sep=""))
-  
+
   TFBS.gr.list <- GRangesList(TFBS.data)
   TFBS.in.features <- lapply(TFBS.gr.list, function(tfbs){
     tmp.hits <- findOverlaps(query = tfbs, subject = features.in.region, minoverlap = 1)
@@ -454,17 +454,17 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
     }
     return(tfbs.hits)
   })
-  
+
   TF.hit.count <- sapply(TFBS.in.features, length)
   TF.hits <- TFBS.in.features[TF.hit.count>0]
-  
+
   # TODO: Add print for found tfbs in features
-  
+
   # Create zero matrix
   TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
   rownames(TF.motif.matrix) <- names(TFBS.data)
   colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
-  
+
   # Loop over all TFBS binding events which overlapped features in the gene region
   lapply(names(TF.hits), function(tf){
     feature <- TF.hits[[tf]]$feature
@@ -475,7 +475,7 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
 }
 
 
-get_BINDetect_snakemake_results <- function(res_path,parallel=F){
+get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
 
   #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
   #'
@@ -487,15 +487,15 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F){
   # 'Dependencies'
   library(GenomicRanges)
   library(magrittr)
-  
+
   # Reject the .txt, .pdf, etc. files with regex.
   # Apparently all sub folders are of form gene_TFBSname.n where n \in {1,2,3}
   motif.res.folders <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
-  
+
   # Drop non-folders from the list
   motif.res.folder.i <- sapply(motif.res.folders,function(d){dir.exists(paste(res_path,d,sep=""))})
   motif.res.folders <- motif.res.folders[motif.res.folder.i]
-  
+
   if (!parallel){
   # The actual loop as described in pseudo
   out_list <- lapply(motif.res.folders, function(name) {
@@ -503,7 +503,7 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F){
     # This should be of form res_path/gene_TFBSname.n/beds/
     overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
 
-    # A little derail, but apparently the most simple way to name each column in the granges is 
+    # A little derail, but apparently the most simple way to name each column in the granges is
     # to convert the bed-file into a column-named data frame.
     # The Granges inherits the column names and thus is can be indexed by column names.
     overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
@@ -522,8 +522,8 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F){
       # Access the sub folder's contents.
       # This should be of form res_path/gene_TFBSname.n/beds/
       overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
-      
-      # A little derail, but apparently the most simple way to name each column in the granges is 
+
+      # A little derail, but apparently the most simple way to name each column in the granges is
       # to convert the bed-file into a column-named data frame.
       # The Granges inherits the column names and thus is can be indexed by column names.
       overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
@@ -532,10 +532,10 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F){
                                               start.field = "TFBS_start",
                                               end.field = "TFBS_end",
                                               strand.field = "TFBS_strand")
-    }, mc.cores=4)
+    }, mc.cores=mc.cores)
     names(out_list) <- motif.res.folders
-    
-    
+
+
   }
   return(out_list)
 }
@@ -543,13 +543,13 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F){
 get_BINDetect_results <- function(res_path, col.names="Default") {
   #'
   #' Queries TOBIAS BINDetect result folder and selects result bed files.
-  #' 
+  #'
   #' -------------------------Briefly in pseudocode------------------------------
-  #' 
+  #'
   #' Access the BINDetect result folder
-  #' 
+  #'
   #' Initialize a result list
-  #' 
+  #'
   #' For each sub folder in the result folder do:
   #'     Open the sub folder (henceforth sub folder = gene_TFBSname)
   #'     Read the gene_TFBSname/beds/gene_TFBS_name_bound.bed
@@ -557,14 +557,14 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
   #'     Append the granges to the result list
   #'
   #' Name the list after string vector (gene_TFBSname1, gene_TFBSname2,...)
-  #' 
+  #'
   #' Return the result list
   #' ----------------------------------------------------------------------------
-  #' 
+  #'
   #' Requires installation of packages:
   #'     GenomicRanges
   #'     Magrittr
-  #'     
+  #'
   #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
   #'
   #'@returns a named list (Large list) consisting of granges for each result sub folder in @param res_path.
@@ -575,7 +575,7 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
   # 'Dependencies'
   library(GenomicRanges)
   library(magrittr)
-  
+
   # Reject the .txt, .pdf, etc. files with regex.
   # Apparently all sub folders are of form gene_TFBSname.n where n \in {1,2,3}
   filenames <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
@@ -589,11 +589,11 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
     #   2.   gene_TFBSname.n_bound.bed
     #   3.   gene_TFBSname.n_unbound.bed
     bound.bed.file <- list.files(bound.bed.path)[2]
-    
+
     # Merge the former two to get full path to the bed
     bound.bed.full.path <- paste0(bound.bed.path, bound.bed.file)
-    
-    # A little derail, but apparently the most simple way to name each column in the granges is 
+
+    # A little derail, but apparently the most simple way to name each column in the granges is
     # to convert the bed-file into a column-named data frame.
     # The Granges inherits the column names and thus is can be indexed by column names.
     bound.bed.df <- data.frame(read.table(bound.bed.full.path))
@@ -617,7 +617,7 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
                                                   start.field = "TFBS_start",
                                                   end.field = "TFBS_end",
                                                   strand.field = "TFBS_strand")
-    
+
     # Return the list of Granges objects
     return(bound.bed.granges)
   })
@@ -626,19 +626,19 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
 
   # Return the Granges list
   return(out_list)
-  
+
 }
 
 get_TFBS_overview_results <- function(res_path) {
   #'
   #' Queries TOBIAS BINDetect result folder and finds TFBS overview of each TF.
-  #' 
+  #'
   #' -------------------------Briefly in pseudocode------------------------------
-  #' 
+  #'
   #' Access the BINDetect result folder
-  #' 
+  #'
   #' Initialize a result list
-  #' 
+  #'
   #' For each sub folder in the result folder do:
   #'     Open the sub folder (henceforth sub folder = gene_TFBSname)
   #'     Read the gene_TFBSname/gene_TFBS_name_overview.txt
@@ -647,14 +647,14 @@ get_TFBS_overview_results <- function(res_path) {
   #'     Convert list to Grangeslist
   #'
   #' Name the list after string vector (gene_TFBSname1, gene_TFBSname2,...)
-  #' 
+  #'
   #' Return the result list
   #' ----------------------------------------------------------------------------
-  #' 
+  #'
   #' Requires installation of packages:
   #'     GenomicRanges
   #'     Magrittr
-  #'     
+  #'
   #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
   #'
   #'@returns a named list (Large list) consisting of granges for each result sub folder in @param res_path.
@@ -665,7 +665,7 @@ get_TFBS_overview_results <- function(res_path) {
   # 'Dependencies'
   library(GenomicRanges)
   library(magrittr)
-  
+
   # Reject the .txt, .pdf, etc. files with regex.
   # Apparently all sub folders are of form gene_TFBSname.n where n \in {1,2,3}
   filenames <- list.files(res_path, pattern = "\\.[0-9]")
@@ -674,12 +674,12 @@ get_TFBS_overview_results <- function(res_path) {
     # Access the sub folder's contents.
     # This should be of form res_path/gene_TFBSname.n/beds/
     tfbs.overview.path <- paste0(res_path, name,"/") %>% paste0(name,"_overview.txt",sep="")
-    
-    # A little derail, but apparently the most simple way to name each column in the granges is 
+
+    # A little derail, but apparently the most simple way to name each column in the granges is
     # to convert the bed-file into a column-named data frame.
     # The Granges inherits the column names and thus is can be indexed by column names.
     tfbs.overview.df <- data.frame(read_tsv(tfbs.overview.path, col_names = TRUE))
- 
+
     # Conversion into a Granges object. The keep.extra.columns argument stores
     # other columns into the metadata slot, by name.
     tfbs.overview.granges <- makeGRangesFromDataFrame(tfbs.overview.df,
@@ -688,7 +688,7 @@ get_TFBS_overview_results <- function(res_path) {
                                                   start.field = "TFBS_start",
                                                   end.field = "TFBS_end",
                                                   strand.field = "TFBS_strand")
-    
+
     # Return the list of Granges objects
     return(tfbs.overview.granges)
   })
@@ -696,7 +696,7 @@ get_TFBS_overview_results <- function(res_path) {
   names(out_list) <- list.files(res_path, pattern = "\\.[0-9]")
   # Return the Granges list
   return(out_list)
-  
+
 }
 
 
@@ -704,9 +704,9 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
   print("Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.")
   obj[['RNA_name']] <- obj[['RNA']]
   RNA <- obj@assays$RNA_name
-  
+
   #tmp.conv <- tibble(id=RNA@counts@Dimnames[[1]], symbol=newnames)
-  
+
   if (nrow(RNA) == length(newnames)) {
     if (length(RNA@counts)) RNA@counts@Dimnames[[1]]            <- newnames
     if (length(RNA@data)) RNA@data@Dimnames[[1]]                <- newnames
@@ -718,11 +718,11 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
 }
 # RenameGenesSeurat(obj = SeuratObj, newnames = HGNC.updated.genes)
 
-# 
-# LinkPeaksId <- function (object, peak.assay, expression.assay, expression.slot = "data", 
-#                          gene.coords = NULL, distance = 5e+05, min.distance = NULL, 
-#                          min.cells = 10, method = "pearson", genes.use = NULL, n_sample = 200, 
-#                          pvalue_cutoff = 0.05, score_cutoff = 0.05, verbose = TRUE) 
+#
+# LinkPeaksId <- function (object, peak.assay, expression.assay, expression.slot = "data",
+#                          gene.coords = NULL, distance = 5e+05, min.distance = NULL,
+#                          min.cells = 10, method = "pearson", genes.use = NULL, n_sample = 200,
+#                          pvalue_cutoff = 0.05, score_cutoff = 0.05, verbose = TRUE)
 # {
 #   if (!inherits(x = object[[peak.assay]], what = "ChromatinAssay")) {
 #     stop("The requested assay is not a ChromatinAssay")
@@ -742,21 +742,21 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
 #   if (is.null(x = gene.coords)) {
 #     gene.coords <- CollapseToLongestTranscript(ranges = Annotation(object = object[[peak.assay]]))
 #   }
-#   meta.features <- GetAssayData(object = object, assay = peak.assay, 
+#   meta.features <- GetAssayData(object = object, assay = peak.assay,
 #                                 slot = "meta.features")
 #   features.match <- c("GC.percent", "count")
 #   if (!("GC.percent" %in% colnames(x = meta.features))) {
-#     stop("GC content per peak has not been computed.\n", 
+#     stop("GC content per peak has not been computed.\n",
 #          "Run RegionsStats before calling this function.")
 #   }
-#   peak.data <- GetAssayData(object = object, assay = peak.assay, 
+#   peak.data <- GetAssayData(object = object, assay = peak.assay,
 #                             slot = "counts")
 #   if (!("count" %in% colnames(x = meta.features))) {
 #     hvf.info <- FindTopFeatures(object = peak.data)
 #     hvf.info <- hvf.info[rownames(x = meta.features), ]
 #     meta.features <- cbind(meta.features, hvf.info)
 #   }
-#   expression.data <- GetAssayData(object = object, assay = expression.assay, 
+#   expression.data <- GetAssayData(object = object, assay = expression.assay,
 #                                   slot = expression.slot)
 #   peakcounts <- meta.features[rownames(x = peak.data), "count"]
 #   genecounts <- rowSums(x = expression.data > 0)
@@ -767,30 +767,30 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
 #     expression.data <- expression.data[genes.keep, ]
 #   }
 #   else {
-#     genes.keep <- intersect(x = names(x = genes.keep[genes.keep]), 
+#     genes.keep <- intersect(x = names(x = genes.keep[genes.keep]),
 #                             y = genes.use)
 #     expression.data <- expression.data[genes.keep, , drop = FALSE]
 #   }
 #   if (verbose) {
-#     message("Testing ", nrow(x = expression.data), " genes and ", 
+#     message("Testing ", nrow(x = expression.data), " genes and ",
 #             sum(peaks.keep), " peaks")
 #   }
 #   genes <- rownames(x = expression.data)
-#   gene.coords.use <- gene.coords[gene.coords$gene_id %in% 
+#   gene.coords.use <- gene.coords[gene.coords$gene_id %in%
 #                                    genes, ]
 #   peaks <- granges(x = object[[peak.assay]])
 #   peaks <- peaks[peaks.keep]
-#   peak_distance_matrix <- DistanceToTSS(peaks = peaks, genes = gene.coords.use, 
+#   peak_distance_matrix <- DistanceToTSS(peaks = peaks, genes = gene.coords.use,
 #                                         distance = distance)
 #   if (!is.null(x = min.distance)) {
-#     peak_distance_matrix_min <- DistanceToTSS(peaks = peaks, 
+#     peak_distance_matrix_min <- DistanceToTSS(peaks = peaks,
 #                                               genes = gene.coords.use, distance = min.distance)
 #     peak_distance_matrix <- peak_distance_matrix - peak_distance_matrix_min
 #   }
-#   
+#
 #   colnames(peak_distance_matrix) <- genes.use
 #   if (sum(peak_distance_matrix) == 0) {
-#     stop("No peaks fall within distance threshold\n", "Have you set the proper genome and seqlevelsStyle for ", 
+#     stop("No peaks fall within distance threshold\n", "Have you set the proper genome and seqlevelsStyle for ",
 #          peak.assay, " assay?")
 #   }
 #   genes.use <- colnames(x = peak_distance_matrix)
@@ -807,7 +807,7 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
 #   }
 #   res <- mylapply(X = seq_along(along.with = genes.use), FUN = function(i) {
 #     peak.use <- as.logical(x = peak_distance_matrix[, genes.use[[i]]])
-#     gene.expression <- t(x = expression.data[genes.use[[i]], 
+#     gene.expression <- t(x = expression.data[genes.use[[i]],
 #                                              , drop = FALSE])
 #     gene.chrom <- as.character(x = seqnames(x = gene.coords.use[i]))
 #     if (sum(peak.use) < 2) {
@@ -817,31 +817,31 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
 #       peak.access <- peak.data[, peak.use, drop = FALSE]
 #       coef.result <- corSparse(X = peak.access, Y = gene.expression)
 #       rownames(x = coef.result) <- colnames(x = peak.access)
-#       coef.result <- coef.result[abs(x = coef.result) > 
+#       coef.result <- coef.result[abs(x = coef.result) >
 #                                    score_cutoff, , drop = FALSE]
 #       if (nrow(x = coef.result) == 0) {
 #         return(list(gene = NULL, coef = NULL, zscore = NULL))
 #       }
 #       else {
 #         peaks.test <- rownames(x = coef.result)
-#         trans.peaks <- all.peaks[!grepl(pattern = paste0("^", 
+#         trans.peaks <- all.peaks[!grepl(pattern = paste0("^",
 #                                                          gene.chrom), x = all.peaks)]
 #         meta.use <- meta.features[trans.peaks, ]
 #         pk.use <- meta.features[peaks.test, ]
-#         bg.peaks <- lapply(X = seq_len(length.out = nrow(x = pk.use)), 
+#         bg.peaks <- lapply(X = seq_len(length.out = nrow(x = pk.use)),
 #                            FUN = function(x) {
-#                              MatchRegionStats(meta.feature = meta.use, 
-#                                               query.feature = pk.use[x, , drop = FALSE], 
-#                                               features.match = c("GC.percent", "count", 
+#                              MatchRegionStats(meta.feature = meta.use,
+#                                               query.feature = pk.use[x, , drop = FALSE],
+#                                               features.match = c("GC.percent", "count",
 #                                                                  "sequence.length"), n = n_sample, verbose = FALSE)
 #                            })
-#         bg.access <- peak.data[, unlist(x = bg.peaks), 
+#         bg.access <- peak.data[, unlist(x = bg.peaks),
 #                                drop = FALSE]
 #         bg.coef <- corSparse(X = bg.access, Y = gene.expression)
 #         rownames(bg.coef) <- colnames(bg.access)
 #         zscores <- vector(mode = "numeric", length = length(x = peaks.test))
 #         for (j in seq_along(along.with = peaks.test)) {
-#           coef.use <- bg.coef[(((j - 1) * n_sample) + 
+#           coef.use <- bg.coef[(((j - 1) * n_sample) +
 #                                  1):(j * n_sample), ]
 #           z <- (coef.result[j] - mean(x = coef.use))/sd(x = coef.use)
 #           zscores[[j]] <- z
@@ -862,17 +862,17 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
 #         gene.vec <- gene.vec[links.keep]
 #         coef.vec <- coef.vec[links.keep]
 #         zscore.vec <- zscore.vec[links.keep]
-#         return(list(gene = gene.vec, coef = coef.vec, 
+#         return(list(gene = gene.vec, coef = coef.vec,
 #                     zscore = zscore.vec))
 #       }
 #     }
 #   })
 #   browser()
-#   gene.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`, 
+#   gene.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`,
 #                                               1))
-#   coef.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`, 
+#   coef.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`,
 #                                               2))
-#   zscore.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`, 
+#   zscore.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`,
 #                                                 3))
 #   if (length(x = coef.vec) == 0) {
 #     if (verbose) {
@@ -882,12 +882,12 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
 #   }
 #   peak.key <- seq_along(along.with = unique(x = names(x = coef.vec)))
 #   names(x = peak.key) <- unique(x = names(x = coef.vec))
-#   coef.matrix <- sparseMatrix(i = gene.vec, j = peak.key[names(x = coef.vec)], 
+#   coef.matrix <- sparseMatrix(i = gene.vec, j = peak.key[names(x = coef.vec)],
 #                               x = coef.vec, dims = c(length(x = genes.use), max(peak.key)))
 #   rownames(x = coef.matrix) <- genes.use
 #   colnames(x = coef.matrix) <- names(x = peak.key)
 #   links <- LinksToGRanges(linkmat = coef.matrix, gene.coords = gene.coords.use)
-#   z.matrix <- sparseMatrix(i = gene.vec, j = peak.key[names(x = zscore.vec)], 
+#   z.matrix <- sparseMatrix(i = gene.vec, j = peak.key[names(x = zscore.vec)],
 #                            x = zscore.vec, dims = c(length(x = genes.use), max(peak.key)))
 #   rownames(x = z.matrix) <- genes.use
 #   colnames(x = z.matrix) <- names(x = peak.key)
@@ -898,18 +898,18 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
 #   Links(object = object[[peak.assay]]) <- links
 #   return(object)
 # }
-# 
+#
 # environment(LinkPeaksId) <- asNamespace("Signac")
 
 convert_feature_identity <- function(object, assay, features, feature.format = "symbol") {
-  
-  #' 
-  #' Converts ENS ID -> gene symbol and vice versa 
+
+  #'
+  #' Converts ENS ID -> gene symbol and vice versa
   #' Returns a vector of length(features) of either matches or NAs, in corresponding indices.
-  #' 
+  #'
   #' Assumes libraries dplyr and seuratObject.
   #' Moreover, requires seuratObject[["assay"]] to contain df/tbl of ENS-symbol correspondences.
-  #' 
+  #'
   # Protective tests
   if (!any(feature.format %in% c("ens", "symbol"))) {
     stop("Feature format should be a sting: either 'symbol' or 'ens'")
@@ -925,34 +925,34 @@ convert_feature_identity <- function(object, assay, features, feature.format = "
   }
   # Diverging execution: case if provided features are ENSEBL IDs => conversion to symbols
   if (feature.format == "ens") {
-    
-    object.features <- object[[assay]][[]] %>% 
+
+    object.features <- object[[assay]][[]] %>%
       rownames_to_column(var = "gene_id") %>%
       as_tibble() %>%
-      dplyr::select("gene_id", "feature_symbol") %>% 
+      dplyr::select("gene_id", "feature_symbol") %>%
       dplyr::filter(gene_id %in% features)
     match.index <- match(features, object.features$gene_id, nomatch = NA)
     v.out <- sapply(match.index, function (i) { ifelse(is.na(i), NA, object.features$feature_symbol[i])})
-    
-    sprintf("Instance: Found matching for %d features out of total %d provided features", sum(!is.na(v.out)), length(features)) %>% 
+
+    sprintf("Instance: Found matching for %d features out of total %d provided features", sum(!is.na(v.out)), length(features)) %>%
       print()
-    
+
     return (v.out)
   }
-  
+
   # Case: otherwise provided symbols => conversion to ENS IDs
-  object.features <- object[[assay]][[]] %>% 
+  object.features <- object[[assay]][[]] %>%
     rownames_to_column(var = "gene_id") %>%
     as_tibble() %>%
-    dplyr::select("gene_id", "feature_symbol") %>% 
+    dplyr::select("gene_id", "feature_symbol") %>%
     dplyr::filter(feature_symbol %in% features)
-  
+
   match.index <- match(features, object.features$feature_symbol, nomatch = NA)
   v.out <- sapply(match.index, function (i) { ifelse(is.na(i), NA, object.features$gene_id[i])})
-  
-  sprintf("Instance: Found matching for %d features out of total %d provided features", sum(!is.na(v.out)), length(features)) %>% 
+
+  sprintf("Instance: Found matching for %d features out of total %d provided features", sum(!is.na(v.out)), length(features)) %>%
     print()
-  
+
   return (v.out)
 }
 
