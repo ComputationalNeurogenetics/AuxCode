@@ -384,8 +384,9 @@ find.combined.non.empty.i <- function(TF.matrix.1, TF.matrix.2){
   return(TF.1.i | TF.2.i)
 }
 
-TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, features.in.region=NULL, min.footprint.score=NULL, condition){
+TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, features.in.region=NULL, min.footprint.score=NULL, condition,mc.cores=1){
   # Define features dimension (cols)
+  require(parallel)
   if (!is.null(features)){
     features.gr <- StringToGRanges(features)
     names(features.gr) <- rownames(features)
@@ -398,8 +399,8 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
     TFBS.data <- GRangesList(TFBS.data)
   }
 
-  TFBS.in.features <- lapply(TFBS.data, function(tfbs){
-
+  TFBS.in.features <- mclapply(1:length(TFBS.data), function(x){
+    tfbs <- subsetByOverlaps(TFBS.data[[x]], features.in.region)
     # Subset granges based on bound==1 on given condition
     tfbs.colnames <- colnames(mcols(tfbs))
     tfbs.i <- which(tfbs.colnames==paste(condition,"_bound",sep=""))
@@ -411,7 +412,7 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
       tfbs.hits$feature <- tmp.features
     }
     return(tfbs.hits)
-  })
+  }, mc.cores=mc.cores)
 
   TF.hit.count <- sapply(TFBS.in.features, length)
   TF.hits <- TFBS.in.features[TF.hit.count>0]
