@@ -401,7 +401,7 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
 
   TFBS.in.features <- mclapply(1:length(TFBS.data), function(x){
     print(paste("Processing",names(TFBS.data)[x],"in",cond,sep=" "))
-    tfbs <- subsetByOverlaps(TFBS.data[[x]], features.in.region)
+    tfbs <- TFBS.data[[x]]
     # Subset granges based on bound==1 on given condition
     tfbs.colnames <- colnames(mcols(tfbs))
     tfbs.i <- which(tfbs.colnames==paste(condition,"_bound",sep=""))
