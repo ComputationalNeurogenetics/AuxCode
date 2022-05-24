@@ -415,6 +415,7 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
     return(tfbs.hits)
   }, mc.cores=mc.cores)
 
+  names(TFBS.in.features) <- names(TFBS.data)
   TF.hit.count <- sapply(TFBS.in.features, length)
   TF.hits <- TFBS.in.features[TF.hit.count>0]
 
