@@ -400,6 +400,7 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
   }
 
   TFBS.in.features <- mclapply(1:length(TFBS.data), function(x){
+    print(paste("Processing",names(TFBS.data)[x],sep=" "))
     tfbs <- subsetByOverlaps(TFBS.data[[x]], features.in.region)
     # Subset granges based on bound==1 on given condition
     tfbs.colnames <- colnames(mcols(tfbs))
@@ -417,7 +418,7 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
   TF.hit.count <- sapply(TFBS.in.features, length)
   TF.hits <- TFBS.in.features[TF.hit.count>0]
 
-  print(paste("Found ", sum(TF.hit.count>0), " hits in the region", sep=""))
+  print(paste("Found total of ", sum(TF.hit.count>0), " hits in the region",, sep=""))
 
   # Create zero matrix
   TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
