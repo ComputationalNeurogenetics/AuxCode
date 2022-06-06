@@ -122,12 +122,13 @@ filter.TF <- function(cond.documents, binarized.TF.exp){
   filt.cond.doc <- lapply(names(cond.documents), function(cond.name){
     cluster.number <- str_remove(cond.name, pattern="[:alpha:]{1,2}[:number:]{0,1}\\.")
     if (!is.null(cond.documents[[cond.name]])){
-      lapply(cond.documents[[cond.name]], function(cond){
+      TF.passed.l.tmp <- lapply(cond.documents[[cond.name]], function(cond){
         TF.expressed.in.condition <- names(which(select(binarized.TF.exp[[as.numeric(cluster.number)]], -starts_with("ident")) %>% colSums() > (nrow(binarized.TF.exp[[as.numeric(cluster.number)]])*.1)))
         TF.passed.l <- cond[str_to_title(str_remove(cond, pattern="_.*")) %in% TF.expressed.in.condition]
         return(TF.passed.l)
       })
     }
+    return(TF.passed.l.tmp)
   })
   
   names(filt.cond.doc) <- names(cond.documents)
