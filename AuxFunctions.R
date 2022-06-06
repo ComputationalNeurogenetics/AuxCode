@@ -132,6 +132,7 @@ filter.TF <- function(cond.documents, binarized.TF.exp){
   })
   
   names(filt.cond.doc) <- names(cond.documents)
+  return(filt.cond.doc)
 }
 
 
