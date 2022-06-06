@@ -83,6 +83,72 @@ TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta
     }
 }
 
+binarize.expression <- function(seurat.data, assay, grouping=NULL, genes=NULL, cells=NULL){
+  DefaultAssay(seurat.data) <- assay
+  options(dplyr.summarise.inform = FALSE)
+  ext.mat <- FetchData(seurat.data, cells = cells, vars = genes)
+  ident.data <- Idents(seurat.data)
+  ext.mat.bin <- apply(ext.mat, 2, function(gene.exp){
+    gene.min <- min(gene.exp)
+    gene.max <- max(gene.exp)
+    if (all(gene.exp==0)){
+      gene.exp.bin <- rep(0,length(gene.exp))
+    } else {
+      gene.ent <- tibble(gene.exp=gene.exp, ident=ident.data) %>% dplyr::group_by(gr=cut(gene.exp, breaks=seq(gene.min,gene.max*1.1, length.out=25), include.lowest = TRUE), ident) %>%  dplyr::summarise(n=n()) %>% dplyr::group_by(gr) %>% dplyr::mutate(entropy=entropy(n)) %>% dplyr::group_by(gr) %>% dplyr::summarise(entropy=mean(entropy))
+      cut.off <- as.numeric(str_extract(as.character(gene.ent[localMinima(gene.ent$entropy)[1],]$gr), pattern="[:digit:]+\\.[:digit:]+"))
+      gene.exp.bin <- ifelse(gene.exp>cut.off,1,0)
+    }
+    return(gene.exp.bin)
+  })
+  
+  rownames(ext.mat.bin) <- rownames(ext.mat)
+  options(dplyr.summarise.inform = TRUE)
+  return(ext.mat.bin)
+}
+
+localMinima <- function(x) {
+  # Use -Inf instead if x is numeric (non-integer)
+  y <- diff(c(.Machine$integer.max, x)) > 0L
+  rle(y)$lengths
+  y <- cumsum(rle(y)$lengths)
+  y <- y[seq.int(1L, length(y), 2L)]
+  if (x[[1]] == x[[2]]) {
+    y <- y[-1]
+  }
+  y
+}
+
+findpeaks <- function(vec,bw=1,x.coo=c(1:length(vec)))
+{
+  pos.x.max <- NULL
+  pos.y.max <- NULL
+  pos.x.min <- NULL
+  pos.y.min <- NULL   
+  for(i in 1:(length(vec)-1))     {       if((i+1+bw)>length(vec)){
+    sup.stop <- length(vec)}else{sup.stop <- i+1+bw
+    }
+    if((i-bw)<1){inf.stop <- 1}else{inf.stop <- i-bw}
+    subset.sup <- vec[(i+1):sup.stop]
+    subset.inf <- vec[inf.stop:(i-1)]
+    
+    is.max   <- sum(subset.inf > vec[i]) == 0
+    is.nomin <- sum(subset.sup > vec[i]) == 0
+    
+    no.max   <- sum(subset.inf > vec[i]) == length(subset.inf)
+    no.nomin <- sum(subset.sup > vec[i]) == length(subset.sup)
+    
+    if(is.max & is.nomin){
+      pos.x.max <- c(pos.x.max,x.coo[i])
+      pos.y.max <- c(pos.y.max,vec[i])
+    }
+    if(no.max & no.nomin){
+      pos.x.min <- c(pos.x.min,x.coo[i])
+      pos.y.min <- c(pos.y.min,vec[i])
+    }
+  }
+  return(list(pos.x.max,pos.y.max,pos.x.min,pos.y.min))
+}
+
 find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format, TOBIAS.format="TOBIAS"){
   DefaultAssay(s.data) <- "RNA_name"
   gene.name.space <- rownames(s.data)
