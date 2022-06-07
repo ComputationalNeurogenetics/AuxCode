@@ -83,10 +83,16 @@ TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta
     }
 }
 
-binarize.expression <- function(seurat.data, assay, grouping=NULL, genes=NULL, cells=NULL){
+binarize.expression <- function(seurat.data, assay, grouping=NULL, genes=NULL, cells=NULL, gene.name.correction=NULL){
   DefaultAssay(seurat.data) <- assay
   options(dplyr.summarise.inform = FALSE)
+  if (!is.null(gene.name.correction)){
+    genes[genes %in% names(gene.name.correction)] <- gene.name.correction[names(gene.name.correction)[names(gene.name.correction) %in% genes]] 
+  }
   ext.mat <- FetchData(seurat.data, cells = cells, vars = genes)
+  if (!is.null(gene.name.correction)){
+    colnames(ext.mat)[colnames(ext.mat) %in% gene.name.correction] <- names(gene.name.correction)[gene.name.correction %in% colnames(ext.mat)]
+  }
   ident.data <- Idents(seurat.data)
   ext.mat.bin <- apply(ext.mat, 2, function(gene.exp){
     gene.min <- min(gene.exp)
