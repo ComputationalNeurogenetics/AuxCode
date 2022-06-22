@@ -99,6 +99,7 @@ binarize.expression <- function(seurat.data, assay, grouping=NULL, genes=NULL, c
     gene.max <- max(gene.exp)
     if (all(gene.exp==0)){
       gene.exp.bin <- rep(0,length(gene.exp))
+      cut.off <- 0
     } else {
       gene.ent <- tibble(gene.exp=gene.exp, ident=ident.data) %>% dplyr::group_by(gr=cut(gene.exp, breaks=seq(gene.min,gene.max*1.1, length.out=25), include.lowest = TRUE), ident) %>%  dplyr::summarise(n=n()) %>% dplyr::group_by(gr) %>% dplyr::mutate(entropy=entropy(n)) %>% dplyr::group_by(gr) %>% dplyr::summarise(entropy=mean(entropy))
       cut.off <- as.numeric(str_extract(as.character(gene.ent[localMinima(gene.ent$entropy)[1],]$gr), pattern="[:digit:]+\\.[:digit:]+"))
