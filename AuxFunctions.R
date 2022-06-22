@@ -677,11 +677,8 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
     # Access the sub folder's contents.
     # This should be of form res_path/gene_TFBSname.n/beds/
     bound.bed.path <- paste0(res_path, name) %>% paste0("/beds/")
-    # Assuming that the files are in constant order where for index set i = {1,2,3} in the folder ./beds/:
-    #   1.   gene_TFBSname.n_all.bed
-    #   2.   gene_TFBSname.n_bound.bed
-    #   3.   gene_TFBSname.n_unbound.bed
-    bound.bed.file <- list.files(bound.bed.path)[2]
+    # Looks for the file by name foo_bound.bed
+    bound.bed.file <- list.files(bound.bed.path)[grepl("_bound", list.files(bound.bed.path))]
 
     # Merge the former two to get full path to the bed
     bound.bed.full.path <- paste0(bound.bed.path, bound.bed.file)
