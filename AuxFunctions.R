@@ -684,11 +684,8 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
     # Access the sub folder's contents.
     # This should be of form res_path/gene_TFBSname.n/beds/
     bound.bed.path <- paste0(res_path, name) %>% paste0("/beds/")
-    # Assuming that the files are in constant order where for index set i = {1,2,3} in the folder ./beds/:
-    #   1.   gene_TFBSname.n_all.bed
-    #   2.   gene_TFBSname.n_bound.bed
-    #   3.   gene_TFBSname.n_unbound.bed
-    bound.bed.file <- list.files(bound.bed.path)[2]
+    # Looks for the file by name foo_bound.bed
+    bound.bed.file <- list.files(bound.bed.path)[grepl("_bound", list.files(bound.bed.path))]
 
     # Merge the former two to get full path to the bed
     bound.bed.full.path <- paste0(bound.bed.path, bound.bed.file)
@@ -1018,10 +1015,10 @@ convert_feature_identity <- function(object, assay, features, feature.format = "
     stop("No features found in argument 'features'")
   }
   if (feature.format == "ens" & !all(grepl("*ENS", features))) {
-    stop("Found non-ENS ID for argument feature format 'ens'")
+    message("Warning: Found non-ENS ID for argument feature format 'ens'")
   }
   if (feature.format == "symbol" & any(grepl("*ENS", features))) {
-    stop("Found ENS ID for argument feature format 'symbol'")
+    message("Warning: Found ENS ID for argument feature format 'symbol'")
   }
   # Diverging execution: case if provided features are ENSEBL IDs => conversion to symbols
   if (feature.format == "ens") {
