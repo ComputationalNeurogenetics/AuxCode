@@ -83,7 +83,7 @@ TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta
     }
 }
 
-binarize.expression <- function(seurat.data, assay, grouping=NULL, genes=NULL, cells=NULL, gene.name.correction=NULL){
+binarize.expression <- function(seurat.data, assay, grouping=NULL, genes=NULL, cells=NULL, gene.name.correction=NULL, return="bin"){
   DefaultAssay(seurat.data) <- assay
   options(dplyr.summarise.inform = FALSE)
   if (!is.null(gene.name.correction)){
@@ -104,12 +104,19 @@ binarize.expression <- function(seurat.data, assay, grouping=NULL, genes=NULL, c
       cut.off <- as.numeric(str_extract(as.character(gene.ent[localMinima(gene.ent$entropy)[1],]$gr), pattern="[:digit:]+\\.[:digit:]+"))
       gene.exp.bin <- ifelse(gene.exp>cut.off,1,0)
     }
-    return(gene.exp.bin)
+    if (return=="bin"){
+      return(gene.exp.bin)
+    } else if (return=="cutoff"){
+      return(cut.off)
+    }
+    
   })
   
-  rownames(ext.mat.bin) <- rownames(ext.mat)
-  options(dplyr.summarise.inform = TRUE)
-  return(ext.mat.bin)
+  if (return=="bin"){
+    rownames(ext.mat.bin) <- rownames(ext.mat)
+    options(dplyr.summarise.inform = TRUE)
+  }
+    return(ext.mat.bin)
 }
 
 localMinima <- function(x) {
