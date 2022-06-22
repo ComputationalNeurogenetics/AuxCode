@@ -1008,10 +1008,10 @@ convert_feature_identity <- function(object, assay, features, feature.format = "
     stop("No features found in argument 'features'")
   }
   if (feature.format == "ens" & !all(grepl("*ENS", features))) {
-    stop("Found non-ENS ID for argument feature format 'ens'")
+    message("Warning: Found non-ENS ID for argument feature format 'ens'")
   }
   if (feature.format == "symbol" & any(grepl("*ENS", features))) {
-    stop("Found ENS ID for argument feature format 'symbol'")
+    message("Warning: Found ENS ID for argument feature format 'symbol'")
   }
   # Diverging execution: case if provided features are ENSEBL IDs => conversion to symbols
   if (feature.format == "ens") {
