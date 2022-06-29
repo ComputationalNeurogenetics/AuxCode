@@ -230,8 +230,41 @@ find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format,
   return(TF.gene.exprs)
 }
 
-TF.heatmap <- function(TF.mat.1=NULL, TF.families=NULL, TF.filt=NULL, cluster.names=NA, links.data=NULL, TF.exprs=FALSE, expr.cutoff=NULL, row.cluster=FALSE, clustering_distance_rows="euclidean",clustering_method_rows = "complete"){
+TF.heatmap <- function(TF.mat.1=NULL,
+                       TF.families=NULL,
+                       TF.filt=NULL,
+                       feature.annotation.region=NULL,
+                       cluster.names=NA,
+                       links.data=NULL,
+                       TF.exprs=FALSE,
+                       expr.cutoff=NULL,
+                       row.cluster=FALSE,
+                       clustering_distance_rows="euclidean",
+                       clustering_method_rows="complete") {
+  
     TF.used <- rownames(TF.mat.1$per.feat.mat)
+    feature.anno <- NULL
+    
+    if (!is.null(feature.annotation.region)) {
+      
+      # feature.annotation.gene should be in as per range
+      if (is.character(feature.annotation.region)) {
+        feature.annotation.region <- StringToGRanges(feature.annotation.region)
+      }
+      
+      # Get all features in region
+      features.gr <- StringToGRanges(colnames(TF.mat.1$per.feat.mat))
+      
+      range_location <- sapply(1:length(features.gr), function (i) {
+        feature <- features.gr[i]
+        pos <- ifelse(feature %over% feature.annotation.region, "in", "out")
+      })
+      
+      feature.anno <- HeatmapAnnotation(location = as.factor(as.character(range_location)),
+                                        col = list(location = c("in" = viridis::cividis(3)[3],
+                                                                "out" = viridis::cividis(3)[2])))
+    }
+    
     if (!is.null(TF.filt)){
       TF.used <- TF.used[TF.used %in% paste(TF.filt,TF.filt,sep="_")]
     }
@@ -283,10 +316,27 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.families=NULL, TF.filt=NULL, cluster.na
         col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
       }
 
-      TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = row.cluster, cluster_columns = FALSE, show_row_dend = TRUE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha,  right_annotation = row_ha, clustering_distance_rows=clustering_distance_rows, clustering_method_rows=clustering_method_rows)
+      TF.1.plot <- Heatmap(TF.mat.to.plot,
+                           cluster_rows = row.cluster,
+                           cluster_columns = FALSE,
+                           show_row_dend = TRUE,
+                           row_names_gp = gpar(fontsize = 6),
+                           col = col_fun,
+                           row_split = row.split,
+                           border = TRUE,
+                           row_title_rot = 0,
+                           row_gap = unit(2, "mm"),
+                           column_names_side = "top",
+                           heatmap_legend_param = list(title=cluster.names[1]),
+                           bottom_annotation = col_ha,
+                           right_annotation = row_ha,
+                           top_annotation = feature.anno,
+                           clustering_distance_rows = clustering_distance_rows,
+                           clustering_method_rows = clustering_method_rows)
+      
       return(TF.1.plot)
     } else {
-      print("No bindings detected")
+      message("No bindings detected")
     }
 
 }
