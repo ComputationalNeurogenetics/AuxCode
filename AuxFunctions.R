@@ -239,6 +239,7 @@ TF.heatmap <- function(TF.mat.1=NULL,
                        TF.exprs=FALSE,
                        expr.cutoff=NULL,
                        row.cluster=FALSE,
+                       enumerate.features=FALSE,
                        clustering_distance_rows="euclidean",
                        clustering_method_rows="complete") {
   
@@ -314,6 +315,16 @@ TF.heatmap <- function(TF.mat.1=NULL,
         }
       } else {
         col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
+      }
+      
+      if (enumerate.features) {
+        
+        number.cols <- sapply(1:ncol(TF.mat.to.plot), function (i) {
+          paste0(i, ". ", colnames(TF.mat.to.plot)[i])
+        })
+        
+        colnames(TF.mat.to.plot) <- number.cols
+        
       }
 
       TF.1.plot <- Heatmap(TF.mat.to.plot,
