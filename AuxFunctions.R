@@ -1093,8 +1093,12 @@ convert_feature_identity <- function(object, assay, features, feature.format = "
     match.index <- match(features, object.features$gene_id, nomatch = NA)
     v.out <- sapply(match.index, function (i) { ifelse(is.na(i), NA, object.features$feature_symbol[i])})
 
-    sprintf("Instance: Found matching for %d features out of total %d provided features", sum(!is.na(v.out)), length(features)) %>%
-      print()
+    succ.matches <- sum(!is.na(v.out))
+    n.tot <- length(features)
+    
+    msg <- str_interp("Instance: Found matching for ${succ.matches} features out of total ${n.tot} provided features")
+    
+    message(msg)
 
     return (v.out)
   }
