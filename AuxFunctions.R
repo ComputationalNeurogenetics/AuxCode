@@ -1467,3 +1467,58 @@ full.snap.to.seurat <- function (obj, eigs.dims = 1:20, norm = TRUE, scale = TRU
     }
     return(pbmc.atac)
 }
+
+new.tf.fun <- function (mat.list) {
+  
+  #' --------------------------------------------------------------------------
+  #' @param mat.list  A named list of matrices
+  #'---------------------------------------------------------------------------
+  
+  #if (!require(c(ComplexHeatmap, RColorBrewer))) {
+  #stop("Load requirements")
+  #}
+  
+  `%notin%` <- purrr::negate(`%in%`)
+  
+  # NOTE: Set3 contains 12 colors.
+  # RColorBrewer::brewer.pal rotates the set if index if larger
+  n.matrices <- length(mat.list)
+  c.palette <- RColorBrewer::brewer.pal(n.matrices, "Set3")
+  
+  # Generate color scale for each heatmap
+  hm.colors <- lapply(1:n.matrices, function (i) {
+    interval <- c(min(mat.list[[i]]), max(mat.list[[i]]))
+    gradient <- c("white", c.palette[i])
+    colorRamp2(interval, gradient)
+  })
+  
+  # Compute union over row names of the matrix list
+  motif.union <- lapply(mat.list, function (mat) rownames(mat)) %>% unlist() %>% unique()
+  message(motif.union)
+  # asdasdasd
+  motif.space <- do.call(rbind, mat.list)
+  
+  
+  
+  mat.list.full <- lapply(mat.list, function (mat) {
+    zero.rows <- motif.space[rownames(mat) %notin% motif.union,]
+    out.mat <- rbind(mat, zero.rows)
+  })
+  
+  # Convert into ComplexHeatmap objects
+  hm.list <- sapply(1:n.matrices, function (i) {
+    Heatmap(mat.list.full[[i]], 
+            name = names(mat.list)[i], 
+            col = hm.colors[[i]], 
+            cluster_rows = T,)
+  })
+  
+  
+  out.list = NULL
+  for (hm in hm.list) {
+    out.list <- out.list + hm
+  }
+  
+  # To be used in ComplexHeatmap::draw
+  return (out.list)
+}
