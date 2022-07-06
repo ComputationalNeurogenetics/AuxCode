@@ -1468,7 +1468,7 @@ full.snap.to.seurat <- function (obj, eigs.dims = 1:20, norm = TRUE, scale = TRU
     return(pbmc.atac)
 }
 
-new.tf.fun <- function (mat.list) {
+group.TF.feature.heatmap <- function (mat.list) {
   
   #' --------------------------------------------------------------------------
   #' @param mat.list  A named list of matrices
@@ -1506,6 +1506,10 @@ new.tf.fun <- function (mat.list) {
     colnames(zero.mat) <- colnames(mat)
     
     out.mat <- rbind(mat, zero.mat)
+    
+    rownames(out.mat) <- str_replace(rownames(out.mat), "(.*)\\.[A-Z]_", "")
+    
+    return (out.mat)
   })
   
   # Convert into ComplexHeatmap objects
