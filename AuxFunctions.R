@@ -1474,9 +1474,9 @@ new.tf.fun <- function (mat.list) {
   #' @param mat.list  A named list of matrices
   #'---------------------------------------------------------------------------
   
-  if (!require(c(ComplexHeatmap, RColorBrewer, purrr))) {
-    stop("Load requirements ComplexHeatmap, RColorBrewer, and purrr")
-  }
+  #if (!require(c(ComplexHeatmap, RColorBrewer, purrr))) {
+  #  message("Load requirements ComplexHeatmap, RColorBrewer, and purrr")
+  #}
   
   `%notin%` <- purrr::negate(`%in%`)
   
@@ -1496,11 +1496,16 @@ new.tf.fun <- function (mat.list) {
   motif.union <- lapply(mat.list, function (mat) rownames(mat)) %>% unlist() %>% unique()
   
   # Transform each matrix into same motif space
-  motif.space <- do.call(rbind, mat.list)
-  
   mat.list.full <- lapply(mat.list, function (mat) {
-    zero.rows <- motif.space[rownames(mat) %notin% motif.union,]
-    out.mat <- rbind(mat, zero.rows)
+    
+    exterior.motifs <- motif.union[motif.union %notin% rownames(mat)]
+    
+    zero.mat <- matrix(0, length(exterior.motifs), ncol(mat))
+    
+    rownames(zero.mat) <- exterior.motifs
+    colnames(zero.mat) <- colnames(mat)
+    
+    out.mat <- rbind(mat, zero.mat)
   })
   
   # Convert into ComplexHeatmap objects
