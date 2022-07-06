@@ -1474,9 +1474,9 @@ new.tf.fun <- function (mat.list) {
   #' @param mat.list  A named list of matrices
   #'---------------------------------------------------------------------------
   
-  #if (!require(c(ComplexHeatmap, RColorBrewer))) {
-  #stop("Load requirements")
-  #}
+  if (!require(c(ComplexHeatmap, RColorBrewer, purrr))) {
+    stop("Load requirements ComplexHeatmap, RColorBrewer, and purrr")
+  }
   
   `%notin%` <- purrr::negate(`%in%`)
   
@@ -1494,11 +1494,9 @@ new.tf.fun <- function (mat.list) {
   
   # Compute union over row names of the matrix list
   motif.union <- lapply(mat.list, function (mat) rownames(mat)) %>% unlist() %>% unique()
-  message(motif.union)
-  # asdasdasd
+  
+  # Transform each matrix into same motif space
   motif.space <- do.call(rbind, mat.list)
-  
-  
   
   mat.list.full <- lapply(mat.list, function (mat) {
     zero.rows <- motif.space[rownames(mat) %notin% motif.union,]
@@ -1513,12 +1511,12 @@ new.tf.fun <- function (mat.list) {
             cluster_rows = T,)
   })
   
-  
+  # Concatenate into ComplexHeatmap list
   out.list = NULL
   for (hm in hm.list) {
     out.list <- out.list + hm
   }
   
-  # To be used in ComplexHeatmap::draw
+  # To be used in e.g. ComplexHeatmap::draw
   return (out.list)
 }
