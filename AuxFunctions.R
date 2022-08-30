@@ -702,7 +702,7 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
   return(out_list)
 }
 
-get_BINDetect_results <- function(res_path, col.names="Default") {
+get_BINDetect_results <- function(res_path, col.names = "Default", bound = T) {
   #'
   #' Queries TOBIAS BINDetect result folder and selects result bed files.
   #'
@@ -745,17 +745,24 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
   out_list <- lapply(filenames, function(name) {
     # Access the sub folder's contents.
     # This should be of form res_path/gene_TFBSname.n/beds/
-    bound.bed.path <- paste0(res_path, name) %>% paste0("/beds/")
-    # Looks for the file by name foo_bound.bed
-    bound.bed.file <- list.files(bound.bed.path)[grepl("_bound", list.files(bound.bed.path))]
+    selected.bed.path <- paste0(res_path, name) %>% paste0("/beds/")
+    
+    if (bound) {
+      # Looks for the file by name foo_bound.bed
+      selected.bed.file <- list.files(selected.bed.path)[grepl("_bound", list.files(selected.bed.path))]  
+    } else {
+      # Looks for the file by name foo_unbound.bed
+      selected.bed.file <- list.files(selected.bed.path)[grepl("_unbound", list.files(selected.bed.path))]  
+    }
+    
 
     # Merge the former two to get full path to the bed
-    bound.bed.full.path <- paste0(bound.bed.path, bound.bed.file)
+    selected.bed.full.path <- paste0(selected.bed.path, selected.bed.file)
 
     # A little derail, but apparently the most simple way to name each column in the granges is
     # to convert the bed-file into a column-named data frame.
     # The Granges inherits the column names and thus is can be indexed by column names.
-    bound.bed.df <- data.frame(read.table(bound.bed.full.path))
+    selected.bed.df <- data.frame(read.table(selected.bed.full.path))
     # Df column names created after column names in respath/gene_TFBSname.n/gene_TFBSname.n_overview.txt
     if (col.names[1]=="Default"){
     col.names.in.input <- c("TFBS_chr",    "TFBS_start", "TFBS_end",
@@ -763,22 +770,22 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
                             "peak_chr", "peak_start",   "peak_end",
                             "peak_id", "peak_score", "peak_strand",
                             "gene_id", "footprint_score")
-    colnames(bound.bed.df) <- col.names.in.input
+    colnames(selected.bed.df) <- col.names.in.input
     } else {
       col.names.in.input <- col.names
-      colnames(bound.bed.df) <- col.names.in.input
+      colnames(selected.bed.df) <- col.names.in.input
     }
     # Conversion into a Granges object. The keep.extra.columns argument stores
     # other columns into the metadata slot, by name.
-    bound.bed.granges <- makeGRangesFromDataFrame(bound.bed.df,
-                                                  keep.extra.columns = TRUE,
-                                                  seqnames.field = "TFBS_chr",
-                                                  start.field = "TFBS_start",
-                                                  end.field = "TFBS_end",
-                                                  strand.field = "TFBS_strand")
+    selected.bed.granges <- makeGRangesFromDataFrame(selected.bed.df,
+                                                     keep.extra.columns = TRUE,
+                                                     seqnames.field = "TFBS_chr",
+                                                     start.field = "TFBS_start",
+                                                     end.field = "TFBS_end",
+                                                     strand.field = "TFBS_strand")
 
     # Return the list of Granges objects
-    return(bound.bed.granges)
+    return(selected.bed.granges)
   })
   # Name each Granges with corresponding gene_TFBSname.n
   names(out_list) <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
