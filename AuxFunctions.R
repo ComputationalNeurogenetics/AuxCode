@@ -1468,29 +1468,21 @@ full.snap.to.seurat <- function (obj, eigs.dims = 1:20, norm = TRUE, scale = TRU
     return(pbmc.atac)
 }
 
-group.TF.feature.heatmap <- function (mat.list) {
+
+# Complement of %in% operator
+`%notin%` <- purrr::negate(`%in%`)
+
+
+# Version from 12.08.2022
+group.TF.feature.heatmap <- function (mat.list, ident.names, feature.of.interest) {
   
   #' --------------------------------------------------------------------------
   #' @param mat.list  A named list of matrices
   #'---------------------------------------------------------------------------
   
-  #if (!require(c(ComplexHeatmap, RColorBrewer, purrr))) {
-  #  message("Load requirements ComplexHeatmap, RColorBrewer, and purrr")
-  #}
-  
-  `%notin%` <- purrr::negate(`%in%`)
-  
   # NOTE: Set3 contains 12 colors.
   # RColorBrewer::brewer.pal rotates the set if index if larger
   n.matrices <- length(mat.list)
-  c.palette <- RColorBrewer::brewer.pal(n.matrices, "Set3")
-  
-  # Generate color scale for each heatmap
-  hm.colors <- lapply(1:n.matrices, function (i) {
-    interval <- c(min(mat.list[[i]]), max(mat.list[[i]]))
-    gradient <- c("white", c.palette[i])
-    colorRamp2(interval, gradient)
-  })
   
   # Compute union over row names of the matrix list
   motif.union <- lapply(mat.list, function (mat) rownames(mat)) %>% unlist() %>% unique()
@@ -1509,23 +1501,25 @@ group.TF.feature.heatmap <- function (mat.list) {
     
     rownames(out.mat) <- str_replace(rownames(out.mat), "(.*)\\.[A-Z]_", "")
     
-    return (out.mat)
+    out.mat <- out.mat[order(row.names(out.mat)), ]
+    
+    out.f <- out.mat[,feature.of.interest]
+    
+    return (out.f)
   })
   
-  # Convert into ComplexHeatmap objects
-  hm.list <- sapply(1:n.matrices, function (i) {
-    Heatmap(mat.list.full[[i]], 
-            name = names(mat.list)[i], 
-            col = hm.colors[[i]], 
-            cluster_rows = T,)
-  })
+  joined.feature.tf.mat <- do.call(cbind, mat.list.full)
   
-  # Concatenate into ComplexHeatmap list
-  out.list = NULL
-  for (hm in hm.list) {
-    out.list <- out.list + hm
-  }
+  colnames(joined.feature.tf.mat) <- ident.names
   
-  # To be used in e.g. ComplexHeatmap::draw
-  return (out.list)
+  hclust.out <- dist(joined.feature.tf.mat) %>% hclust()
+  
+  joined.feature.tf.mat <- joined.feature.tf.mat[hclust.out$order,]
+  
+  joined.feature.tf.mat <- joined.feature.tf.mat[apply(joined.feature.tf.mat[,-1], 1, function(x) !all(x == 0)), ]
+  
+  hm.out <- Heatmap(joined.feature.tf.mat, cluster_rows = F, cluster_columns = F,
+                    name = feature.of.interest, col = viridis::viridis(10))
+  
+  return(hm.out)
 }
