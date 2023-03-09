@@ -802,7 +802,7 @@ get_BINDetect_results <- function(res_path, col.names = "Default", bound = T) {
                             "TFBS_name","TFBS_score", "TFBS_strand",
                             "peak_chr", "peak_start",   "peak_end",
                             "peak_id", "peak_score", "peak_strand",
-                            "gene_id", "footprint_score")
+                            "gene_id","gene_symbol", "footprint_score")
     colnames(selected.bed.df) <- col.names.in.input
     } else {
       col.names.in.input <- col.names
@@ -1549,7 +1549,7 @@ ChromVar_DA <- function(da.features, id.1, id.2, motifs, seurat.object, genome =
 
 
 # Version from 12.08.2022
-group.TF.feature.heatmap <- function (mat.list, ident.names, feature.of.interest) {
+group.TF.feature.heatmap <- function(mat.list, ident.names, feature.of.interest){
   
   #' --------------------------------------------------------------------------
   #' @param mat.list  A named list of matrices
@@ -1595,7 +1595,5 @@ group.TF.feature.heatmap <- function (mat.list, ident.names, feature.of.interest
   
   hm.out <- Heatmap(joined.feature.tf.mat, cluster_rows = F, cluster_columns = F,
                     name = feature.of.interest, col = viridis::viridis(10))
-  
   return(hm.out)
-
-}
+}}
