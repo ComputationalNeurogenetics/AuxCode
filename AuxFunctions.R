@@ -263,8 +263,42 @@ find.TF.expr <- function(TF.footprint.data, s.data, TF.metadata, TF.meta.format,
   return(TF.gene.exprs)
 }
 
-TF.heatmap <- function(TF.mat.1=NULL, TF.families=NULL, TF.filt=NULL, cluster.names=NA, links.data=NULL, TF.exprs=FALSE, expr.cutoff=NULL, row.cluster=FALSE, clustering_distance_rows="euclidean",clustering_method_rows = "complete"){
+TF.heatmap <- function(TF.mat.1=NULL,
+                       TF.families=NULL,
+                       TF.filt=NULL,
+                       feature.annotation.region=NULL,
+                       cluster.names=NA,
+                       links.data=NULL,
+                       TF.exprs=FALSE,
+                       expr.cutoff=NULL,
+                       row.cluster=FALSE,
+                       enumerate.features=FALSE,
+                       clustering_distance_rows="euclidean",
+                       clustering_method_rows="complete") {
+  
     TF.used <- rownames(TF.mat.1$per.feat.mat)
+    feature.anno <- NULL
+    
+    if (!is.null(feature.annotation.region)) {
+      
+      # feature.annotation.gene should be in as per range
+      if (is.character(feature.annotation.region)) {
+        feature.annotation.region <- StringToGRanges(feature.annotation.region)
+      }
+      
+      # Get all features in region
+      features.gr <- StringToGRanges(colnames(TF.mat.1$per.feat.mat))
+      
+      range_location <- sapply(1:length(features.gr), function (i) {
+        feature <- features.gr[i]
+        pos <- ifelse(feature %over% feature.annotation.region, "in", "out")
+      })
+      
+      feature.anno <- HeatmapAnnotation(location = as.factor(as.character(range_location)),
+                                        col = list(location = c("in" = viridis::cividis(3)[3],
+                                                                "out" = viridis::cividis(3)[2])))
+    }
+    
     if (!is.null(TF.filt)){
       TF.used <- TF.used[TF.used %in% paste(TF.filt,TF.filt,sep="_")]
     }
@@ -315,11 +349,38 @@ TF.heatmap <- function(TF.mat.1=NULL, TF.families=NULL, TF.filt=NULL, cluster.na
       } else {
         col_ha <- columnAnnotation(acc=anno_boxplot(TF.mat.1$acc, height = unit(4, "cm")))
       }
+      
+      if (enumerate.features) {
+        
+        number.cols <- sapply(1:ncol(TF.mat.to.plot), function (i) {
+          paste0(i, ". ", colnames(TF.mat.to.plot)[i])
+        })
+        
+        colnames(TF.mat.to.plot) <- number.cols
+        
+      }
 
-      TF.1.plot <- Heatmap(TF.mat.to.plot, cluster_rows = row.cluster, cluster_columns = FALSE, show_row_dend = TRUE, row_names_gp = gpar(fontsize = 6), col=col_fun, row_split=row.split, border = TRUE, row_title_rot = 0, row_gap = unit(2, "mm"), column_names_side = "top", heatmap_legend_param=list(title=cluster.names[1]), bottom_annotation = col_ha,  right_annotation = row_ha, clustering_distance_rows=clustering_distance_rows, clustering_method_rows=clustering_method_rows)
+      TF.1.plot <- Heatmap(TF.mat.to.plot,
+                           cluster_rows = row.cluster,
+                           cluster_columns = FALSE,
+                           show_row_dend = TRUE,
+                           row_names_gp = gpar(fontsize = 6),
+                           col = col_fun,
+                           row_split = row.split,
+                           border = TRUE,
+                           row_title_rot = 0,
+                           row_gap = unit(2, "mm"),
+                           column_names_side = "top",
+                           heatmap_legend_param = list(title=cluster.names[1]),
+                           bottom_annotation = col_ha,
+                           right_annotation = row_ha,
+                           top_annotation = feature.anno,
+                           clustering_distance_rows = clustering_distance_rows,
+                           clustering_method_rows = clustering_method_rows)
+      
       return(TF.1.plot)
     } else {
-      print("No bindings detected")
+      message("No bindings detected")
     }
 
 }
@@ -674,7 +735,7 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
   return(out_list)
 }
 
-get_BINDetect_results <- function(res_path, col.names="Default") {
+get_BINDetect_results <- function(res_path, col.names = "Default", bound = T) {
   #'
   #' Queries TOBIAS BINDetect result folder and selects result bed files.
   #'
@@ -717,17 +778,24 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
   out_list <- lapply(filenames, function(name) {
     # Access the sub folder's contents.
     # This should be of form res_path/gene_TFBSname.n/beds/
-    bound.bed.path <- paste0(res_path, name) %>% paste0("/beds/")
-    # Looks for the file by name foo_bound.bed
-    bound.bed.file <- list.files(bound.bed.path)[grepl("_bound", list.files(bound.bed.path))]
+    selected.bed.path <- paste0(res_path, name) %>% paste0("/beds/")
+    
+    if (bound) {
+      # Looks for the file by name foo_bound.bed
+      selected.bed.file <- list.files(selected.bed.path)[grepl("_bound", list.files(selected.bed.path))]  
+    } else {
+      # Looks for the file by name foo_unbound.bed
+      selected.bed.file <- list.files(selected.bed.path)[grepl("_unbound", list.files(selected.bed.path))]  
+    }
+    
 
     # Merge the former two to get full path to the bed
-    bound.bed.full.path <- paste0(bound.bed.path, bound.bed.file)
+    selected.bed.full.path <- paste0(selected.bed.path, selected.bed.file)
 
     # A little derail, but apparently the most simple way to name each column in the granges is
     # to convert the bed-file into a column-named data frame.
     # The Granges inherits the column names and thus is can be indexed by column names.
-    bound.bed.df <- data.frame(read.table(bound.bed.full.path))
+    selected.bed.df <- data.frame(read.table(selected.bed.full.path))
     # Df column names created after column names in respath/gene_TFBSname.n/gene_TFBSname.n_overview.txt
     if (col.names[1]=="Default"){
     col.names.in.input <- c("TFBS_chr",    "TFBS_start", "TFBS_end",
@@ -735,22 +803,22 @@ get_BINDetect_results <- function(res_path, col.names="Default") {
                             "peak_chr", "peak_start",   "peak_end",
                             "peak_id", "peak_score", "peak_strand",
                             "gene_id", "footprint_score")
-    colnames(bound.bed.df) <- col.names.in.input
+    colnames(selected.bed.df) <- col.names.in.input
     } else {
       col.names.in.input <- col.names
-      colnames(bound.bed.df) <- col.names.in.input
+      colnames(selected.bed.df) <- col.names.in.input
     }
     # Conversion into a Granges object. The keep.extra.columns argument stores
     # other columns into the metadata slot, by name.
-    bound.bed.granges <- makeGRangesFromDataFrame(bound.bed.df,
-                                                  keep.extra.columns = TRUE,
-                                                  seqnames.field = "TFBS_chr",
-                                                  start.field = "TFBS_start",
-                                                  end.field = "TFBS_end",
-                                                  strand.field = "TFBS_strand")
+    selected.bed.granges <- makeGRangesFromDataFrame(selected.bed.df,
+                                                     keep.extra.columns = TRUE,
+                                                     seqnames.field = "TFBS_chr",
+                                                     start.field = "TFBS_start",
+                                                     end.field = "TFBS_end",
+                                                     strand.field = "TFBS_strand")
 
     # Return the list of Granges objects
-    return(bound.bed.granges)
+    return(selected.bed.granges)
   })
   # Name each Granges with corresponding gene_TFBSname.n
   names(out_list) <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
@@ -1067,8 +1135,12 @@ convert_feature_identity <- function(object, assay, features, feature.format = "
     match.index <- match(features, object.features$gene_id, nomatch = NA)
     v.out <- sapply(match.index, function (i) { ifelse(is.na(i), NA, object.features$feature_symbol[i])})
 
-    sprintf("Instance: Found matching for %d features out of total %d provided features", sum(!is.na(v.out)), length(features)) %>%
-      print()
+    succ.matches <- sum(!is.na(v.out))
+    n.tot <- length(features)
+    
+    msg <- str_interp("Instance: Found matching for ${succ.matches} features out of total ${n.tot} provided features")
+    
+    message(msg)
 
     return (v.out)
   }
@@ -1471,4 +1543,59 @@ ChromVar_DA <- function(da.features, id.1, id.2, motifs, seurat.object, genome =
   ) %>% dplyr::filter(p_val_adj <= 0.05 & (avg_log2FC >= 0.5 | avg_log2FC <= -0.5)) %>% rownames_to_column(var="motif.id") %>% as_tibble() %>% arrange(avg_log2FC)
   
   return(markers_chromvar)
+
+# Complement of %in% operator
+`%notin%` <- purrr::negate(`%in%`)
+
+
+# Version from 12.08.2022
+group.TF.feature.heatmap <- function (mat.list, ident.names, feature.of.interest) {
+  
+  #' --------------------------------------------------------------------------
+  #' @param mat.list  A named list of matrices
+  #'---------------------------------------------------------------------------
+  
+  # NOTE: Set3 contains 12 colors.
+  # RColorBrewer::brewer.pal rotates the set if index if larger
+  n.matrices <- length(mat.list)
+  
+  # Compute union over row names of the matrix list
+  motif.union <- lapply(mat.list, function (mat) rownames(mat)) %>% unlist() %>% unique()
+  
+  # Transform each matrix into same motif space
+  mat.list.full <- lapply(mat.list, function (mat) {
+    
+    exterior.motifs <- motif.union[motif.union %notin% rownames(mat)]
+    
+    zero.mat <- matrix(0, length(exterior.motifs), ncol(mat))
+    
+    rownames(zero.mat) <- exterior.motifs
+    colnames(zero.mat) <- colnames(mat)
+    
+    out.mat <- rbind(mat, zero.mat)
+    
+    rownames(out.mat) <- str_replace(rownames(out.mat), "(.*)\\.[A-Z]_", "")
+    
+    out.mat <- out.mat[order(row.names(out.mat)), ]
+    
+    out.f <- out.mat[,feature.of.interest]
+    
+    return (out.f)
+  })
+  
+  joined.feature.tf.mat <- do.call(cbind, mat.list.full)
+  
+  colnames(joined.feature.tf.mat) <- ident.names
+  
+  hclust.out <- dist(joined.feature.tf.mat) %>% hclust()
+  
+  joined.feature.tf.mat <- joined.feature.tf.mat[hclust.out$order,]
+  
+  joined.feature.tf.mat <- joined.feature.tf.mat[apply(joined.feature.tf.mat[,-1], 1, function(x) !all(x == 0)), ]
+  
+  hm.out <- Heatmap(joined.feature.tf.mat, cluster_rows = F, cluster_columns = F,
+                    name = feature.of.interest, col = viridis::viridis(10))
+  
+  return(hm.out)
+
 }
