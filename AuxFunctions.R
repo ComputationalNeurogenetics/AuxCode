@@ -1,5 +1,38 @@
 # Some additional functions ----
 
+gene_set_prepare2 <- function(path_to_db_file, cell_type){
+  
+  cell_markers = openxlsx::read.xlsx(path_to_db_file)
+  cell_markers = cell_markers[cell_markers$tissueType == cell_type,] 
+  cell_markers$geneSymbolmore1 = gsub(" ","",cell_markers$geneSymbolmore1); cell_markers$geneSymbolmore2 = gsub(" ","",cell_markers$geneSymbolmore2)
+  
+  # correct gene symbols from the given DB (up-genes)
+  cell_markers$geneSymbolmore1 = sapply(1:nrow(cell_markers), function(i){
+    
+    markers_all = gsub(" ", "", unlist(strsplit(cell_markers$geneSymbolmore1[i],",")))
+    markers_all = toupper(markers_all[markers_all != "NA" & markers_all != ""])
+    markers_all = sort(markers_all)
+    paste0(markers_all, collapse=",")
+  })
+  
+  # correct gene symbols from the given DB (down-genes)
+  cell_markers$geneSymbolmore2 = sapply(1:nrow(cell_markers), function(i){
+    
+    markers_all = gsub(" ", "", unlist(strsplit(cell_markers$geneSymbolmore2[i],",")))
+    markers_all = toupper(markers_all[markers_all != "NA" & markers_all != ""])
+    markers_all = sort(markers_all)
+    paste0(markers_all, collapse=",")
+  })
+  
+  cell_markers$geneSymbolmore1 = gsub("///",",",cell_markers$geneSymbolmore1);cell_markers$geneSymbolmore1 = gsub(" ","",cell_markers$geneSymbolmore1)
+  cell_markers$geneSymbolmore2 = gsub("///",",",cell_markers$geneSymbolmore2);cell_markers$geneSymbolmore2 = gsub(" ","",cell_markers$geneSymbolmore2)
+  
+  gs = lapply(1:nrow(cell_markers), function(j) gsub(" ","",unlist(strsplit(toString(cell_markers$geneSymbolmore1[j]),",")))); names(gs) = cell_markers$cellName
+  gs2 = lapply(1:nrow(cell_markers), function(j) gsub(" ","",unlist(strsplit(toString(cell_markers$geneSymbolmore2[j]),",")))); names(gs2) = cell_markers$cellName
+  
+  list(gs_positive = gs, gs_negative = gs2)
+}
+
 scale.by.acc <- function(tf.idf.mat, acc.mat, dummy=FALSE){
   if (dummy){
     return(tf.idf.mat)
@@ -802,13 +835,15 @@ RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different
   print("Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.")
   obj[['RNA_name']] <- obj[['RNA']]
   RNA <- obj@assays$RNA_name
-
-  #tmp.conv <- tibble(id=RNA@counts@Dimnames[[1]], symbol=newnames)
+  if (length(RNA@scale.data) > 0){
+    tmp.conv <- tibble(id=RNA@counts@Dimnames[[1]], symbol=newnames)
+  }
 
   if (nrow(RNA) == length(newnames)) {
-    if (length(RNA@counts)) RNA@counts@Dimnames[[1]]            <- newnames
-    if (length(RNA@data)) RNA@data@Dimnames[[1]]                <- newnames
-    if (length(RNA@scale.data)) RNA@scale.data@Dimnames[[1]]    <- newnames
+    if (length(RNA@counts) >0 & class(RNA@data)[1]=="dgCMatrix") {RNA@counts@Dimnames[[1]]            <- newnames}
+    if (length(RNA@data) >0 ){ RNA@data@Dimnames[[1]]                <- newnames}
+    if (length(RNA@scale.data) > 0 & !is.matrix(RNA@scale.data)){RNA@scale.data@Dimnames[[1]]    <- newnames}
+    if (length(RNA@scale.data) > 0 & is.matrix(RNA@scale.data)){rownames(RNA@scale.data)    <- tmp.conv$symbol[match(rownames(RNA@scale.data),tmp.conv$id)]}
     #if (length(RNA@scale.data)) dimnames(RNA@scale.data)[[1]]    <- tmp.conv$symbol[match(dimnames(RNA@scale.data)[[1]],tmp.conv$id)]
   } else {"Unequal gene sets: nrow(RNA) != nrow(newnames)"}
   obj@assays$RNA_name <- RNA
@@ -1401,4 +1436,39 @@ full.snap.to.seurat <- function (obj, eigs.dims = 1:20, norm = TRUE, scale = TRU
         pbmc.atac <- ScaleData(pbmc.atac)
     }
     return(pbmc.atac)
+}
+
+
+ChromVar_DA <- function(da.features, id.1, id.2, motifs, seurat.object, genome = BSgenome.Mmusculus.UCSC.mm10){
+  
+  da_features[[id.1]][[id.2]] %>% dplyr::filter((avg_log2FC > 0.5 | avg_log2FC < -0.5) & p_val_adj < 0.05) %>% pull(feature) -> sub.da.features
+  
+  tmp.1.motifs <- CreateMotifMatrix(
+    features = StringToGRanges(sub.da.features),
+    pwm = motifs,
+    genome = genome,
+    score = FALSE,
+    use.counts = FALSE,
+    sep = c("-", "-")
+  )
+  
+  seurat.object <- RunChromVAR(
+    object = subset(seurat.object, features=sub.da.features),
+    motif.matrix = tmp.1.motifs,
+    assay="peaks",
+    genome = BSgenome.Mmusculus.UCSC.mm10,
+    new.assay.name = "chromvar.da"
+  )
+  
+  DefaultAssay(seurat.object) <- "chromvar.da"
+  markers_chromvar <- FindMarkers(
+    object = seurat.object,
+    only.pos = FALSE,
+    ident.1 = id.1,
+    ident.2 = id.2,
+    test.use = 'LR',
+    latent.vars = 'nCount_peaks'
+  ) %>% dplyr::filter(p_val_adj <= 0.05 & (avg_log2FC >= 0.5 | avg_log2FC <= -0.5)) %>% rownames_to_column(var="motif.id") %>% as_tibble() %>% arrange(avg_log2FC)
+  
+  return(markers_chromvar)
 }
