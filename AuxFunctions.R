@@ -1597,3 +1597,20 @@ group.TF.feature.heatmap <- function(mat.list, ident.names, feature.of.interest)
                     name = feature.of.interest, col = viridis::viridis(10))
   return(hm.out)
 }}
+
+read_consensus_bed <- function(bed_file){
+  data.tmp <- read.table(bed_file,sep="\t",fill=TRUE,header = F,col.names=c("chr", "start", "end", "replicate_peak_start_coordinates","replicate_peak_end_coordinates","total_signal","max_signal","max_signal_region","replicate","consensus_count"))
+  return(data.tmp)
+}
+
+consensus_bed2Granges <- function(bed_file){
+  require(GenomicRanges)
+  data_tmp <- read_consensus_bed(bed_file)
+  consensus.bed.granges <- makeGRangesFromDataFrame(data_tmp,
+                                                   keep.extra.columns = TRUE,
+                                                   seqnames.field = "chr",
+                                                   start.field = "start",
+                                                   end.field = "end",
+                                                   ignore.strand = T)
+  return(consensus.bed.granges)
+}
