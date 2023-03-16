@@ -83,7 +83,7 @@ TOBIAS.heatmap.plotter <- function(s.data, TFBS.data, genes, conditions, TF.meta
     }
 }
 
-binarize.expression <- function(seurat.data, assay, grouping=NULL, genes=NULL, cells=NULL, gene.name.correction=NULL, return="bin"){
+binarize.expression <- function(seurat.data, assay, grouping=NULL, genes=NULL, cells=NULL, gene.name.correction=NULL, return="bin", cutoff.coef=1.0){
   DefaultAssay(seurat.data) <- assay
   options(dplyr.summarise.inform = FALSE)
   if (!is.null(gene.name.correction)){
@@ -103,6 +103,7 @@ binarize.expression <- function(seurat.data, assay, grouping=NULL, genes=NULL, c
     } else {
       gene.ent <- tibble(gene.exp=gene.exp, ident=ident.data) %>% dplyr::group_by(gr=cut(gene.exp, breaks=seq(gene.min,gene.max*1.1, length.out=25), include.lowest = TRUE), ident) %>%  dplyr::summarise(n=n()) %>% dplyr::group_by(gr) %>% dplyr::mutate(entropy=entropy(n)) %>% dplyr::group_by(gr) %>% dplyr::summarise(entropy=mean(entropy))
       cut.off <- as.numeric(str_extract(as.character(gene.ent[localMinima(gene.ent$entropy)[1],]$gr), pattern="[:digit:]+\\.[:digit:]+"))
+      cut.off <- cutoff.coef*cut.off
       gene.exp.bin <- ifelse(gene.exp>cut.off,1,0)
     }
     if (return=="bin"){
@@ -1530,3 +1531,40 @@ group.TF.feature.heatmap <- function (mat.list, ident.names, feature.of.interest
   
   return(hm.out)
 }
+
+
+overlap.bounds <- function (range, fpath, res.type = "bound", col.names = "Default", TF = NULL)
+{
+  #'
+  #' @param range     (str)       Range over which to visualize results
+  #' @param fpath     (str)       Path to TOBIAS BINDetect results
+  #' @param res.type  (str)       Type of such results "bound"/"unbound"
+  #' @param col.names (str)       Column names, default "Default
+  #' @param TF        (str)       TF to which restrict results
+  #'
+  
+  # Dependencies
+  require("Signac")
+  require("GenomicRanges")
+  
+  if (is.character(range)) {
+    range <- StringToGRanges(range)
+  }
+  
+  bound <- ifelse(res.type == "bound", T, F)
+  
+  bd.res <- get_BINDetect_results(fpath, bound = bound, col.names = col.names)
+  
+  overlaps <- lapply(bd.res, function (r) {
+    out <- r[r %over% range]
+  })
+  
+  if (!is.null(TF)) {
+    overlaps <- overlaps[names(overlaps) == TF][[1]]
+    overlaps <- overlaps[,c(1,2,3)]
+  }
+  
+  return (overlaps)
+  
+}
+
