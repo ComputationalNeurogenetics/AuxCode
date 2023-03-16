@@ -1604,8 +1604,6 @@ read_consensus_bed <- function(bed_file){
   return(data.tmp)
 }
 
-<<<<<<< HEAD
-
 overlap.bounds <- function (range, fpath, res.type = "bound", col.names = "Default", TF = NULL)
 {
   #'
