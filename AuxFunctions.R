@@ -737,7 +737,6 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
 }
 
 import_BINDetect_snakemake_results <- function(res_path, db.conn, table.name){
-  require(GenomicRanges)
   require(magrittr)
   require(RSQLite)
   
