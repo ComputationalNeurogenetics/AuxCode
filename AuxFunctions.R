@@ -736,16 +736,7 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
   return(out_list)
 }
 
-import_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL, db.conn, table.name){
-  
-  #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
-  #'
-  #'@returns a named list (Large list) consisting of granges for each result sub folder in @param res_path.
-  #'         The list can be conveniently accessed, for example, with out_list$gene_TFBSname
-  #'
-  #'@example get_BINDetect_snakemake_results("/path/to/TOBIAS_framework/outs/TFBS/")
-  #'
-  # 'Dependencies'
+import_BINDetect_snakemake_results <- function(res_path, db.conn, table.name){
   require(GenomicRanges)
   require(magrittr)
   require(RSQLite)
@@ -764,50 +755,24 @@ import_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NUL
   motif.res.folder.i <- sapply(motif.res.folders,function(d){dir.exists(paste(res_path,d,sep=""))})
   motif.res.folders <- motif.res.folders[motif.res.folder.i]
   
-  if (!parallel){
+ 
     # The actual loop as described in pseudo
     out_list <- lapply(motif.res.folders, function(name) {
+      print(paste("Processing",name,sep=": "))
       # Access the sub folder's contents.
       # This should be of form res_path/gene_TFBSname.n/beds/
       overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
-      
-      # A little derail, but apparently the most simple way to name each column in the granges is
-      # to convert the bed-file into a column-named data frame.
-      # The Granges inherits the column names and thus is can be indexed by column names.
       overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
       selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
-      dbWriteTable(conn, name=table.name, value=overview.df[,selected.cols.i], append = TRUE)
-      # TODO: This could be significantly faster if one first catenates all files and reads it as one pass into df and then GR
-      #GenomicRanges::makeGRangesFromDataFrame(overview.df, keep.extra.columns = TRUE,
-     #                                         seqnames.field = "TFBS_chr",
-      #                                        start.field = "TFBS_start",
-       #                                       end.field = "TFBS_end",
-        #                                      strand.field = "TFBS_strand")
+      overview.df.import <- overview.df[,selected.cols.i]
+      overview.df.import$motif <- name
+      dbWriteTable(conn, name=table.name, value=overview.df.import, append = TRUE)
     })
-    #names(out_list) <- motif.res.folders
-  } else {
-    require(parallel)
-    # The actual loop as described in pseudo
-    out_list <- mclapply(motif.res.folders, function(name) {
-      # Access the sub folder's contents.
-      # This should be of form res_path/gene_TFBSname.n/beds/
-      overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
-      
-      # A little derail, but apparently the most simple way to name each column in the granges is
-      # to convert the bed-file into a column-named data frame.
-      # The Granges inherits the column names and thus is can be indexed by column names.
-      overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
-      GenomicRanges::makeGRangesFromDataFrame(overview.df, keep.extra.columns = TRUE,
-                                              seqnames.field = "TFBS_chr",
-                                              start.field = "TFBS_start",
-                                              end.field = "TFBS_end",
-                                              strand.field = "TFBS_strand")
-    }, mc.cores=mc.cores)
-    names(out_list) <- motif.res.folders
-    
-    
-  }
-  return(out_list)
+
+  print(paste("Indexing...",sep=""))
+  dbExecute(conn,paste("CREATE INDEX index_motif ON ",table.name," (motif)",sep=""))
+  dbExecute(conn,paste("CREATE INDEX index_start ON ",table.name," (feat_start)",sep=""))
+  dbExecute(conn,paste("CREATE INDEX index_end ON ",table.name," (feat_end)",sep=""))
   dbDisconnect(conn)
 }
 
