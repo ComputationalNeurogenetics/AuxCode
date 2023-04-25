@@ -619,7 +619,7 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
   rownames(TF.motif.matrix) <- names(TFBS.data)
   colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
 
-  TF.hit.coordinates <-  lapply(TFBS.in.features, function(x){start(x)})
+  TF.hit.coordinates <-  lapply(TFBS.in.features, function(x){tmp <- start(x);names(tmp)<-x$features.with.hits})
   names(TF.hit.coordinates) <- names(TFBS.in.features)
   
   # Loop over all TFBS binding events which overlapped features in the gene region
