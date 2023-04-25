@@ -601,9 +601,9 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
     tfbs.filt <- tfbs[elementMetadata(tfbs)[,tfbs.i]==1,]
     tmp.hits <- findOverlaps(query = tfbs.filt, subject = features.in.region, minoverlap = 1)
     tmp.features <- GRangesToString(features.in.region[subjectHits(tmp.hits)])
-    tfbs.hits <- tfbs[queryHits(tmp.hits)]
+    tfbs.hits <- tfbs.filt[queryHits(tmp.hits)]
     if (length(tfbs.hits)>0){
-      tfbs.hits$feature <- tmp.features
+      tfbs.hits$features.with.hits <- tmp.features
     }
     return(tfbs.hits)
   }, mc.cores=mc.cores)
@@ -612,24 +612,27 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
   TF.hit.count <- sapply(TFBS.in.features, length)
   TF.hits <- TFBS.in.features[TF.hit.count>0]
 
-  print(paste("Found total of ", sum(TF.hit.count>0), " hits in the region",sep=""))
+  print(paste("Found total of ", sum(TF.hit.count>0), " TF's to hit the region",sep=""))
 
   # Create zero matrix
   TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
   rownames(TF.motif.matrix) <- names(TFBS.data)
   colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
 
+  TF.hit.coordinates <-  lapply(TFBS.data, function(x){start(x)})
+  names(TF.hit.coordinates) <- names(TFBS.data)
+  
   # Loop over all TFBS binding events which overlapped features in the gene region
   lapply(names(TF.hits), function(tf){
-    feature <- TF.hits[[tf]]$feature
+    features.with.hits <- TF.hits[[tf]]$features.with.hits
     tfbs.colnames <- colnames(mcols(TF.hits[[tf]]))
     tfbs.i <- which(tfbs.colnames==paste(condition,"_score",sep=""))
     footprint.scores <- TF.hits[[tf]][,tfbs.i]
 
-    avg.footprint.score.per.feat <- tapply(INDEX=feature, X=mcols(footprint.scores)[,1], FUN=mean)
+    avg.footprint.score.per.feat <- tapply(INDEX=features.with.hits, X=mcols(footprint.scores)[,1], FUN=mean)
     TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
   })
-  return(list(per.feat.mat=TF.motif.matrix))
+  return(list(per.feat.mat=TF.motif.matrix, TF.hit.coordinates=TF.hit.coordinates))
 }
 
 
