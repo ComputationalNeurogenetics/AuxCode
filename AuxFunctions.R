@@ -883,7 +883,7 @@ get_BINDetect_snakemake_results_v2 <- function(res_path,parallel=F, mc.cores=NUL
       return(to.import)
 
     }, mc.cores=mc.cores)
-    names(out_list) <- motif.res.folders
+    #names(out_list) <- motif.res.folders
   }
   
   return(bind_rows(out_list))
