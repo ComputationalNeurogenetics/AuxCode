@@ -624,8 +624,9 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
       names(tmp) <- x$features.with.hits
       return(tmp)
     })
-  names(TF.hit.coordinates) <- names(TFBS.in.features)
   
+  names(TF.hit.coordinates) <- str_extract(names(TFBS.in.features) ,pattern = ".*[[:digit:]]{1}\\.[[:alpha:]]{1}_") %>% str_sub(start=1, end=-2)
+    
   # Loop over all TFBS binding events which overlapped features in the gene region
   lapply(names(TF.hits), function(tf){
     features.with.hits <- TF.hits[[tf]]$features.with.hits
