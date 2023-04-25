@@ -851,13 +851,9 @@ get_BINDetect_snakemake_results_v2 <- function(res_path,parallel=F, mc.cores=NUL
   motif.res.folders <- motif.res.folders[motif.res.folder.i]
   
   if (!parallel){
-    # The actual loop as described in pseudo
     out_list <- lapply(motif.res.folders, function(name) {
       # Access the sub folder's contents.
       overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
-      
-      # A little derail, but apparently the most simple way to name each column in the granges is
-      # to convert the bed-file into a column-named data frame.
       overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
       selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
       to.import <- overview.df[,selected.cols.i]
@@ -867,15 +863,9 @@ get_BINDetect_snakemake_results_v2 <- function(res_path,parallel=F, mc.cores=NUL
     names(out_list) <- motif.res.folders
   } else {
     require(parallel)
-    # The actual loop as described in pseudo
     out_list <- mclapply(motif.res.folders, function(name) {
       # Access the sub folder's contents.
-      # This should be of form res_path/gene_TFBSname.n/beds/
       overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
-      
-      # A little derail, but apparently the most simple way to name each column in the granges is
-      # to convert the bed-file into a column-named data frame.
-      # The Granges inherits the column names and thus is can be indexed by column names.
       overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
       selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
       to.import <- overview.df[,selected.cols.i]
