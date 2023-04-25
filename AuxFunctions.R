@@ -612,7 +612,7 @@ TF.motifs.per.feature.snakemake <- function(features=NULL, TFBS.data, region, fe
   TF.hit.count <- sapply(TFBS.in.features, length)
   TF.hits <- TFBS.in.features[TF.hit.count>0]
 
-  print(paste("Found total of ", sum(TF.hit.count>0), " TF's to hit the region",sep=""))
+  print(paste("Found total of ", sum(TF.hit.count>0), " TF hits the region",sep=""))
 
   # Create zero matrix
   TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
