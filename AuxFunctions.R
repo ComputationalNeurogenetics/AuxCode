@@ -703,8 +703,10 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
     # to convert the bed-file into a column-named data frame.
     # The Granges inherits the column names and thus is can be indexed by column names.
     overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
+    selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
+    overview.df.import <- overview.df[,selected.cols.i]
     # TODO: This could be significantly faster if one first catenates all files and reads it as one pass into df and then GR
-    GenomicRanges::makeGRangesFromDataFrame(overview.df, keep.extra.columns = TRUE,
+    GenomicRanges::makeGRangesFromDataFrame(overview.df.import, keep.extra.columns = TRUE,
                                                   seqnames.field = "TFBS_chr",
                                                   start.field = "TFBS_start",
                                                   end.field = "TFBS_end",
@@ -723,7 +725,9 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
       # to convert the bed-file into a column-named data frame.
       # The Granges inherits the column names and thus is can be indexed by column names.
       overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
-      GenomicRanges::makeGRangesFromDataFrame(overview.df, keep.extra.columns = TRUE,
+      selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
+      overview.df.import <- overview.df[,selected.cols.i]
+      GenomicRanges::makeGRangesFromDataFrame(overview.df.import, keep.extra.columns = TRUE,
                                               seqnames.field = "TFBS_chr",
                                               start.field = "TFBS_start",
                                               end.field = "TFBS_end",
@@ -739,6 +743,8 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
 import_BINDetect_snakemake_results <- function(res_path, db.conn, table.name){
   require(magrittr)
   require(RSQLite)
+  
+  
   
   if (file.exists(db.conn)){
     file.remove(db.conn)
@@ -775,6 +781,32 @@ import_BINDetect_snakemake_results <- function(res_path, db.conn, table.name){
   dbDisconnect(conn)
 }
 
+add_id <- function(){
+
+  dbExecute(conn,paste("ALTER TABLE ",mydb.table," ADD COLUMN id TEXT;",sep=""))
+  dbExecute(conn,paste("UPDATE ",mydb.table," SET id = motif || '-' || TFBS_chr || '-' || TFBS_start || '-' || TFBS_end;",sep=""))
+  
+}
+
+
+precalculate.matches <- function(db.conn, table.name, features.gr){
+  require(magrittr)
+  require(RSQLite)
+  require(valr)
+  require(GenomicRanges)
+  conn <- dbConnect(RSQLite::SQLite(), db.conn)
+  table.name <- table.name
+  features.tb <- gr_to_bed(features.gr)
+  features.strings <- paste(pull(features.tb, chrom),"-",pull(features.tb, start),"-",pull(features.tb, end),sep="")
+  
+  snakemake <- dbGetQuery(conn, paste('SELECT TFBS_chr, TFBS_start, TFBS_end, id FROM ',mydb.table, ';',sep=""))
+  colnames(snakemake) <- c("chr","start","end","id")
+  snakemake.gr <- GenomicRanges::makeGRangesFromDataFrame(snakemake)
+  snake.hits <- findOverlaps(query = snakemake.gr, subject = features.gr, minoverlap = 1L)
+  
+  snake.hits.tb <- tibble(motif_id=pull(snakemake, id)[queryHits(snake.hits)], feature=features.strings[subjectHits(snake.hits)])
+  dbWriteTable(conn, name=table.name, value=snake.hits.tb, append = TRUE) 
+}
 
 get_BINDetect_results <- function(res_path, col.names = "Default", bound = T) {
   #'
