@@ -689,7 +689,7 @@ TF.motifs.per.feature.snakemake_v2 <- function(features=NULL, TFBS.data, region,
   } else {
     features.in.region <- StringToGRanges(features.in.region)
   }
-  print(paste("Found ", length(features.in.region), " features in the region", sep=""))
+  #print(paste("Found ", length(features.in.region), " features in the region", sep=""))
   if (!class(TFBS.data)=="CompressedGRangesList"){
     TFBS.data <- GRangesList(TFBS.data)
   }
@@ -711,35 +711,15 @@ TF.motifs.per.feature.snakemake_v2 <- function(features=NULL, TFBS.data, region,
   }, mc.cores=mc.cores)
   
   names(TFBS.in.features) <- names(TFBS.data)
-  TF.hit.count <- sapply(TFBS.in.features, length)
-  TF.hits <- TFBS.in.features[TF.hit.count>0]
-  
-  print(paste("Found total of ", sum(TF.hit.count>0), " TF hits the region",sep=""))
-  
-  # Create zero matrix
-  TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
-  rownames(TF.motif.matrix) <- names(TFBS.data)
-  colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
-  
-  TF.hit.coordinates <-  lapply(TFBS.in.features, function(x){
-    tmp <- start(x)
-    names(tmp) <- x$features.with.hits
-    return(tmp)
+  TF.hits <- sapply(1:length(TFBS.in.features), function(x){
+    tmp <- gr_to_bed(TFBS.in.features[[x]])
+    if (nrow(tmp)>0){
+      tibble(tmp,motif_id=names(TFBS.in.features)[x])
+    }
   })
   
-  names(TF.hit.coordinates) <- str_extract(names(TFBS.in.features) ,pattern = ".*[[:digit:]]{1}\\.[[:alpha:]]{1}_") %>% str_sub(start=1, end=-2)
-  
-  # Loop over all TFBS binding events which overlapped features in the gene region
-  lapply(names(TF.hits), function(tf){
-    features.with.hits <- TF.hits[[tf]]$features.with.hits
-    tfbs.colnames <- colnames(mcols(TF.hits[[tf]]))
-    tfbs.i <- which(tfbs.colnames==paste(condition,"_score",sep=""))
-    footprint.scores <- TF.hits[[tf]][,tfbs.i]
-    
-    avg.footprint.score.per.feat <- tapply(INDEX=features.with.hits, X=mcols(footprint.scores)[,1], FUN=mean)
-    TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
-  })
-  return(list(per.feat.mat=TF.motif.matrix, TF.hit.coordinates=TF.hit.coordinates))
+  return(bind_rows(TF.hits))  
+
 }
 
 
@@ -848,6 +828,67 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
   }
   return(out_list)
 }
+
+get_BINDetect_snakemake_results_v2 <- function(res_path,parallel=F, mc.cores=NULL){
+  
+  #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
+  #'
+  #'@returns a named list (Large list) consisting of granges for each result sub folder in @param res_path.
+  #'         The list can be conveniently accessed, for example, with out_list$gene_TFBSname
+  #'
+  #'@example get_BINDetect_snakemake_results("/path/to/TOBIAS_framework/outs/TFBS/")
+  #'
+  # 'Dependencies'
+  #library(GenomicRanges)
+  library(magrittr)
+  
+  # Reject the .txt, .pdf, etc. files with regex.
+  # Apparently all sub folders are of form gene_TFBSname.n where n \in {1,2,3}
+  motif.res.folders <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
+  
+  # Drop non-folders from the list
+  motif.res.folder.i <- sapply(motif.res.folders,function(d){dir.exists(paste(res_path,d,sep=""))})
+  motif.res.folders <- motif.res.folders[motif.res.folder.i]
+  
+  if (!parallel){
+    # The actual loop as described in pseudo
+    out_list <- lapply(motif.res.folders, function(name) {
+      # Access the sub folder's contents.
+      overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
+      
+      # A little derail, but apparently the most simple way to name each column in the granges is
+      # to convert the bed-file into a column-named data frame.
+      overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
+      selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
+      to.import <- overview.df[,selected.cols.i]
+      to.import$motif_id <- name
+      return(to.import)
+    })
+    names(out_list) <- motif.res.folders
+  } else {
+    require(parallel)
+    # The actual loop as described in pseudo
+    out_list <- mclapply(motif.res.folders, function(name) {
+      # Access the sub folder's contents.
+      # This should be of form res_path/gene_TFBSname.n/beds/
+      overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
+      
+      # A little derail, but apparently the most simple way to name each column in the granges is
+      # to convert the bed-file into a column-named data frame.
+      # The Granges inherits the column names and thus is can be indexed by column names.
+      overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
+      selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
+      to.import <- overview.df[,selected.cols.i]
+      to.import$motif_id <- name
+      return(to.import)
+
+    }, mc.cores=mc.cores)
+    names(out_list) <- motif.res.folders
+  }
+  
+  return(bind_rows(out_list))
+}
+
 
 import_BINDetect_snakemake_results <- function(res_path, db.conn, table.name){
   require(magrittr)
