@@ -678,6 +678,107 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   return(list(per.feat.mat=TF.motif.matrix))
 }
 
+TF.motifs.per.feature.snakemake_v2 <- function(features=NULL, TFBS.data, region, features.in.region=NULL, min.footprint.score=NULL, condition,mc.cores=1){
+  # Define features dimension (cols)
+  require(parallel)
+  require(valr)
+  if (!is.null(features)){
+    features.gr <- StringToGRanges(features)
+    names(features.gr) <- rownames(features)
+    features.in.region <- features.gr[features.gr %over% StringToGRanges(region)]
+  } else {
+    features.in.region <- StringToGRanges(features.in.region)
+  }
+  print(paste("Found ", length(features.in.region), " features in the region", sep=""))
+  if (!class(TFBS.data)=="CompressedGRangesList"){
+    TFBS.data <- GRangesList(TFBS.data)
+  }
+  
+  TFBS.in.features <- mclapply(1:length(TFBS.data), function(x){
+    print(paste("Processing",names(TFBS.data)[x],"in",condition,sep=" "))
+    tfbs <- TFBS.data[[x]]
+    # Subset granges based on bound==1 on given condition
+    tfbs.colnames <- colnames(mcols(tfbs))
+    tfbs.i <- which(tfbs.colnames==paste(condition,"_bound",sep=""))
+    tfbs.filt <- tfbs[elementMetadata(tfbs)[,tfbs.i]==1,]
+    tmp.hits <- findOverlaps(query = tfbs.filt, subject = features.in.region, minoverlap = 1)
+    tmp.features <- GRangesToString(features.in.region[subjectHits(tmp.hits)])
+    tfbs.hits <- tfbs.filt[queryHits(tmp.hits)]
+    if (length(tfbs.hits)>0){
+      tfbs.hits$features.with.hits <- tmp.features
+    }
+    return(tfbs.hits)
+  }, mc.cores=mc.cores)
+  
+  names(TFBS.in.features) <- names(TFBS.data)
+  TF.hit.count <- sapply(TFBS.in.features, length)
+  TF.hits <- TFBS.in.features[TF.hit.count>0]
+  
+  print(paste("Found total of ", sum(TF.hit.count>0), " TF hits the region",sep=""))
+  
+  # Create zero matrix
+  TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
+  rownames(TF.motif.matrix) <- names(TFBS.data)
+  colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
+  
+  TF.hit.coordinates <-  lapply(TFBS.in.features, function(x){
+    tmp <- start(x)
+    names(tmp) <- x$features.with.hits
+    return(tmp)
+  })
+  
+  names(TF.hit.coordinates) <- str_extract(names(TFBS.in.features) ,pattern = ".*[[:digit:]]{1}\\.[[:alpha:]]{1}_") %>% str_sub(start=1, end=-2)
+  
+  # Loop over all TFBS binding events which overlapped features in the gene region
+  lapply(names(TF.hits), function(tf){
+    features.with.hits <- TF.hits[[tf]]$features.with.hits
+    tfbs.colnames <- colnames(mcols(TF.hits[[tf]]))
+    tfbs.i <- which(tfbs.colnames==paste(condition,"_score",sep=""))
+    footprint.scores <- TF.hits[[tf]][,tfbs.i]
+    
+    avg.footprint.score.per.feat <- tapply(INDEX=features.with.hits, X=mcols(footprint.scores)[,1], FUN=mean)
+    TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
+  })
+  return(list(per.feat.mat=TF.motif.matrix, TF.hit.coordinates=TF.hit.coordinates))
+}
+
+
+TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.score=NULL){
+  # Define features dimension (cols)
+  features.gr <- StringToGRanges(features)
+  names(features.gr) <- rownames(features)
+  features.in.region <- features.gr[features.gr %over% StringToGRanges(region)]
+  print(paste("Found ", length(features.in.region), " features in the region", sep=""))
+  
+  TFBS.gr.list <- GRangesList(TFBS.data)
+  TFBS.in.features <- lapply(TFBS.gr.list, function(tfbs){
+    tmp.hits <- findOverlaps(query = tfbs, subject = features.in.region, minoverlap = 1)
+    tmp.features <- GRangesToString(features.in.region[subjectHits(tmp.hits)])
+    tfbs.hits <- tfbs[queryHits(tmp.hits)]
+    if (length(tfbs.hits)>0){
+      tfbs.hits$feature <- tmp.features
+    }
+    return(tfbs.hits)
+  })
+  
+  TF.hit.count <- sapply(TFBS.in.features, length)
+  TF.hits <- TFBS.in.features[TF.hit.count>0]
+  
+  # TODO: Add print for found tfbs in features
+  
+  # Create zero matrix
+  TF.motif.matrix <- matrix(0, nrow = length(TFBS.data), ncol=length(features.in.region))
+  rownames(TF.motif.matrix) <- names(TFBS.data)
+  colnames(TF.motif.matrix) <- GRangesToString(features.in.region)
+  
+  # Loop over all TFBS binding events which overlapped features in the gene region
+  lapply(names(TF.hits), function(tf){
+    feature <- TF.hits[[tf]]$feature
+    avg.footprint.score.per.feat <- tapply(INDEX=feature, X=TF.hits[[tf]]$footprint_score, FUN=mean)
+    TF.motif.matrix[tf,names(avg.footprint.score.per.feat)] <<- avg.footprint.score.per.feat
+  })
+  return(list(per.feat.mat=TF.motif.matrix))
+}
 
 get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
 
