@@ -861,7 +861,7 @@ get_BINDetect_snakemake_results_v2 <- function(res_path,parallel=F, mc.cores=NUL
       overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
       selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
       to.import <- overview.df[,selected.cols.i]
-      to.import$motif_id <- name
+      to.import$motif_id <- str_extract(name,pattern = ".*[[:digit:]]{1}\\.[[:alpha:]]{1}_") %>% str_sub(start=1, end=-2)
       return(to.import)
     })
     names(out_list) <- motif.res.folders
@@ -879,7 +879,7 @@ get_BINDetect_snakemake_results_v2 <- function(res_path,parallel=F, mc.cores=NUL
       overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
       selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
       to.import <- overview.df[,selected.cols.i]
-      to.import$motif_id <- name
+      to.import$motif_id <- str_extract(name,pattern = ".*[[:digit:]]{1}\\.[[:alpha:]]{1}_") %>% str_sub(start=1, end=-2)
       return(to.import)
 
     }, mc.cores=mc.cores)
