@@ -2,6 +2,7 @@ library(GenomicRanges)
 library(devtools)
 library(parallel)
 library(tidyverse)
+library(qs)
 source_url("https://github.com/ComputationalNeurogenetics/AuxCode/raw/master/AuxFunctions.R")
 
 # Read TOBIAS results from snakemake output
