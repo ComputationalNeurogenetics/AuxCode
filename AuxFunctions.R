@@ -770,9 +770,11 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
   #'@example get_BINDetect_snakemake_results("/path/to/TOBIAS_framework/outs/TFBS/")
   #'
   # 'Dependencies'
-  library(GenomicRanges)
-  library(magrittr)
-
+  require(GenomicRanges)
+  require(magrittr)
+  require(tidyverse)
+  require(parallel)
+  
   # Reject the .txt, .pdf, etc. files with regex.
   # Apparently all sub folders are of form gene_TFBSname.n where n \in {1,2,3}
   motif.res.folders <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
@@ -830,7 +832,8 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
 }
 
 get_BINDetect_snakemake_results_v2 <- function(res_path,parallel=F, mc.cores=NULL){
-  
+  require(tidyverse)
+  require(parallel)
   #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
   #'
   #'@returns a named list (Large list) consisting of granges for each result sub folder in @param res_path.
