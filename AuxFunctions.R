@@ -760,7 +760,7 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   return(list(per.feat.mat=TF.motif.matrix))
 }
 
-get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
+get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NULL){
 
   #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
   #'
@@ -825,24 +825,13 @@ get_BINDetect_snakemake_results <- function(res_path,parallel=F, mc.cores=NULL){
                                               strand.field = "TFBS_strand")
     }, mc.cores=mc.cores)
     names(out_list) <- motif.res.folders
-
-
   }
   return(out_list)
 }
 
-get_BINDetect_snakemake_results_v2 <- function(res_path,parallel=F, mc.cores=NULL){
+get_BINDetect_snakemake_results_df <- function(res_path,parallel=F, mc.cores=NULL){
   require(tidyverse)
   require(parallel)
-  #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
-  #'
-  #'@returns a named list (Large list) consisting of granges for each result sub folder in @param res_path.
-  #'         The list can be conveniently accessed, for example, with out_list$gene_TFBSname
-  #'
-  #'@example get_BINDetect_snakemake_results("/path/to/TOBIAS_framework/outs/TFBS/")
-  #'
-  # 'Dependencies'
-  #library(GenomicRanges)
   library(magrittr)
   
   # Reject the .txt, .pdf, etc. files with regex.
@@ -881,56 +870,6 @@ get_BINDetect_snakemake_results_v2 <- function(res_path,parallel=F, mc.cores=NUL
   
   return(bind_rows(out_list))
 }
-
-
-import_BINDetect_snakemake_results <- function(res_path, db.conn, table.name){
-  require(magrittr)
-  require(RSQLite)
-  
-  
-  
-  if (file.exists(db.conn)){
-    file.remove(db.conn)
-  }
-  
-  conn <- dbConnect(RSQLite::SQLite(), db.conn)
-
-    # Reject the .txt, .pdf, etc. files with regex.
-  # Apparently all sub folders are of form gene_TFBSname.n where n \in {1,2,3}
-  motif.res.folders <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
-  
-  # Drop non-folders from the list
-  motif.res.folder.i <- sapply(motif.res.folders,function(d){dir.exists(paste(res_path,d,sep=""))})
-  motif.res.folders <- motif.res.folders[motif.res.folder.i]
-  
- 
-    # The actual loop as described in pseudo
-    out_list <- lapply(motif.res.folders, function(name) {
-      print(paste("Processing",name,sep=": "))
-      # Access the sub folder's contents.
-      # This should be of form res_path/gene_TFBSname.n/beds/
-      overview.file.path <- paste0(res_path, name) %>% paste0("/",name,"_overview.txt")
-      overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
-      selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
-      overview.df.import <- overview.df[,selected.cols.i]
-      overview.df.import$motif <- name
-      dbWriteTable(conn, name=table.name, value=overview.df.import, append = TRUE)
-    })
-
-  print(paste("Indexing...",sep=""))
-  dbExecute(conn,paste("CREATE INDEX index_motif ON ",table.name," (motif)",sep=""))
-  dbExecute(conn,paste("CREATE INDEX index_start ON ",table.name," (feat_start)",sep=""))
-  dbExecute(conn,paste("CREATE INDEX index_end ON ",table.name," (feat_end)",sep=""))
-  dbDisconnect(conn)
-}
-
-add_id <- function(){
-
-  dbExecute(conn,paste("ALTER TABLE ",mydb.table," ADD COLUMN id TEXT;",sep=""))
-  dbExecute(conn,paste("UPDATE ",mydb.table," SET id = motif || '-' || TFBS_chr || '-' || TFBS_start || '-' || TFBS_end;",sep=""))
-  
-}
-
 
 precalculate.matches <- function(db.conn, table.name, features.gr){
   require(magrittr)
@@ -1866,3 +1805,28 @@ consensus_bed2Granges <- function(bed_file){
   return(consensus.bed.granges)
 }
 
+
+ConstructBed_TobiasGr <- function(gr,group,TF,file=NULL){
+  if(any(length(group)>1 | length(TF)>1)){
+    errorCondition("Only one group and TF at the time are supported")
+  } else {
+    require(valr)
+    TF.ni <- grep(x=names(rV2.groups.tobias.gr), pattern=str_to_upper(TF))
+    gr.tmp <- gr[[TF.ni]]
+    
+    group.ni <- which(colnames(elementMetadata(gr.tmp))==paste(group,"_bound",sep=""))
+    score.ni <- which(colnames(elementMetadata(gr.tmp))==paste(group,"_score",sep=""))
+    
+    gr.out <- gr.tmp[(elementMetadata(gr.tmp)[,group.ni]==1)]
+    bed.out <- gr_to_bed(gr.out)
+    bed.out$footprint_score <- elementMetadata(gr.out)[,score.ni]
+    
+    if (is.null(file)){
+      return(bed.out)
+    } else {
+      invisible(bed.out)
+      write_tsv(bed.out, file=file, col_names=FALSE)
+    }
+  }
+}
+  
