@@ -1,4 +1,5 @@
 library(qs)
+library(tidyverse)
 library(valr)
 library(GenomicRanges)
 library(devtools)
