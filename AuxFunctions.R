@@ -760,7 +760,7 @@ TF.motifs.per.feature <- function(features, TFBS.data, region, min.footprint.sco
   return(list(per.feat.mat=TF.motif.matrix))
 }
 
-get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NULL){
+get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NULL, HOCOMOCO=11){
 
   #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
   #'
@@ -777,8 +777,11 @@ get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NUL
   
   # Reject the .txt, .pdf, etc. files with regex.
   # Apparently all sub folders are of form gene_TFBSname.n where n \in {1,2,3}
-  motif.res.folders <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
-
+  if (HOCOMOCO==11){
+	motif.res.folders <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
+	} else if (HOCOMOCO==12){
+	motif.res.folders <- list.files(res_path, pattern = "*H12CORE.*")
+}
   # Drop non-folders from the list
   motif.res.folder.i <- sapply(motif.res.folders,function(d){dir.exists(paste(res_path,d,sep=""))})
   motif.res.folders <- motif.res.folders[motif.res.folder.i]
@@ -1806,27 +1809,34 @@ consensus_bed2Granges <- function(bed_file){
 }
 
 
-ConstructBed_TobiasGr <- function(gr,group,TF,file=NULL){
+ConstructBed_TobiasGr <- function(gr,group,TF,file=NULL, gr.only=FALSE){
   if(any(length(group)>1 | length(TF)>1)){
     errorCondition("Only one group and TF at the time are supported")
   } else {
     require(valr)
-    TF.ni <- grep(x=names(rV2.groups.tobias.gr), pattern=str_to_upper(TF))
-    gr.tmp <- gr[[TF.ni]]
-    
-    group.ni <- which(colnames(elementMetadata(gr.tmp))==paste(group,"_bound",sep=""))
-    score.ni <- which(colnames(elementMetadata(gr.tmp))==paste(group,"_score",sep=""))
-    
-    gr.out <- gr.tmp[(elementMetadata(gr.tmp)[,group.ni]==1)]
-    bed.out <- gr_to_bed(gr.out)
-    bed.out$footprint_score <- elementMetadata(gr.out)[,score.ni]
-    
-    if (is.null(file)){
-      return(bed.out)
-    } else {
-      invisible(bed.out)
-      write_tsv(bed.out, file=file, col_names=FALSE)
+    TF.ni <- grep(x=names(gr), pattern=str_to_upper(TF))
+    for (v in TF.ni) {
+      gr.tmp <- gr[[v]]
+      
+      group.ni <- which(colnames(elementMetadata(gr.tmp))==paste(group,"_bound",sep=""))
+      score.ni <- which(colnames(elementMetadata(gr.tmp))==paste(group,"_score",sep=""))
+      
+      gr.out <- gr.tmp[(elementMetadata(gr.tmp)[,group.ni]==1)]
+      if (!gr.only){
+        bed.out <- gr_to_bed(gr.out)
+        bed.out$footprint_score <- elementMetadata(gr.out)[,score.ni]
+      } else {
+        bed.out <- gr.out
+      }
+      
+      if (is.null(file)){
+        return(bed.out)
+      } else {
+        invisible(bed.out)
+        write_tsv(bed.out, file=paste(names(gr)[v],"_.bed",sep=""), col_names=FALSE)
+      }
     }
+  
   }
 }
   
