@@ -1809,7 +1809,7 @@ consensus_bed2Granges <- function(bed_file){
 }
 
 
-ConstructBed_TobiasGr <- function(gr,group,TF,file=NULL, gr.only=FALSE){
+ConstructBed_TobiasGr <- function(gr,group,TF,file=TRUE, gr.only=FALSE){
   if(any(length(group)>1 | length(TF)>1)){
     errorCondition("Only one group and TF at the time are supported")
   } else {
