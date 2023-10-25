@@ -1833,7 +1833,7 @@ ConstructBed_TobiasGr <- function(gr,group,TF,file=TRUE, gr.only=FALSE){
         return(bed.out)
       } else {
         invisible(bed.out)
-        write_tsv(bed.out, file=paste(names(gr)[v],"_.bed",sep=""), col_names=FALSE)
+        write_tsv(bed.out, file=paste(group,"_",names(gr)[v],"_.bed",sep=""), col_names=FALSE)
       }
     }
   
