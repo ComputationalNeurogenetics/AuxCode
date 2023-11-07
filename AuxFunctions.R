@@ -1839,4 +1839,209 @@ ConstructBed_TobiasGr <- function(gr,group,TF,file=TRUE, gr.only=FALSE){
   
   }
 }
+
+findEChO <- function(EChO.matrix, span, foci, EChO.thr=120){
+  coordinates <- apply(foci[span$line,] %>% select(c("chr","start","end")), 1, function(r){r<-str_remove_all(string = r,pattern = " ");paste(r,collapse = "-")})
+  rownames(EChO.matrix) <- coordinates
+  #makeGRangesFromDataFrame(foci[span$line,] %>% select(c("chr","start","end")))
+  EChO.true.i <- which(rowSums(EChO.matrix<120)>0)
+  return(list(EChO.true.i=EChO.true.i,coordinates=coordinates[EChO.true.i]))
+}
   
+plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.of.interest){
+  
+  DefaultAssay(dataset) <- "peaks"
+  peaks.data <- FetchData(dataset, vars = rownames(dataset))
+  all.features <- rownames(dataset)
+  all.features.gr <- StringToGRanges(all.features)
+  DefaultAssay(dataset) <- "RNA"
+  expression.data <- FetchData(dataset, vars = rownames(dataset))
+  
+  features.granges.gr <- all.features.gr[all.features.gr %over% StringToGRanges(region.of.interest)]
+  features.in.region <- GRangesToString(features.granges.gr)
+  
+  f1.range <- range(Annotation(dataset)[Annotation(dataset)$gene_name %in% covariate.genes.to.plot[1]], ignore.strand = TRUE)
+  f2.range <- f1.range+50000
+  
+  # Select features to be included: coding+promixal+significant distal ones
+  links.all <- Links(dataset)[Links(dataset) %over% features.granges.gr & elementMetadata(Links(dataset))$pvalue < 0.01]
+  links.all.peaks.gr <- StringToGRanges(elementMetadata(links.all)$peak)
+  
+  features.to.show.gr <- sort(unique(c(features.granges.gr[features.granges.gr %over% f2.range],links.all.peaks.gr)))
+  features.to.show <- GRangesToString(features.to.show.gr)
+  
+  links.to.highlight <- Links(dataset)[Links(dataset) %over% f2.range & elementMetadata(Links(dataset))$pvalue < 0.01]
+  links.to.highlight.peak.gr <- StringToGRanges(elementMetadata(links.to.highlight)$peak)
+ 
+  # Preparing covariate data
+  id.to.plot <- convert_feature_identity(dataset, "RNA", covariate.genes.to.plot, "symbol")
+  eoi <- data.frame(expression.data[,colnames(expression.data) %in% id.to.plot])
+  colnames(eoi) <- id.to.plot
+  rownames(eoi) <- rownames(expression.data)
+  eoi$pseudotime <- dataset$VIA_pseudotime
+  eoi <- eoi %>% arrange(pseudotime)
+
+  peaks.data.ss <- peaks.data[,features.to.show]
+  peaks.data.ss <- merge(peaks.data.ss, data.frame(dataset$VIA_pseudotime), by = "row.names")
+  rownames(peaks.data.ss) <- peaks.data.ss$Row.names
+  peaks.data.ss <- merge(peaks.data.ss, data.frame(dataset$rv2.lineage), by = "row.names") 
+  rownames(peaks.data.ss) <- peaks.data.ss$Row.names
+  peaks.data.ss <- peaks.data.ss[,3:ncol(peaks.data.ss)]
+  col.names <- colnames(peaks.data.ss)
+  col.names[length(col.names) - 1] <- "pseudotime"
+  col.names[length(col.names)] <- "label"
+  colnames(peaks.data.ss) <- col.names
+ 
+  f1.expression <- data.frame(eoi %>% select(all_of(id.to.plot)), row.names = rownames(eoi))
+  peaks.data.ss <- merge(peaks.data.ss, f1.expression, by = "row.names")
+  rownames(peaks.data.ss) <- peaks.data.ss$Row.names
+  peaks.data.ss <- peaks.data.ss[,2:ncol(peaks.data.ss)] 
+  
+  peaks.data.ss <- peaks.data.ss %>% arrange(pseudotime, id.to.plot[1])
+  
+  covariate.rolled.means <- rownames_to_column(peaks.data.ss, var = "barcode") %>% as_tibble() %>% select(starts_with("ENS")) %>% zoo::rollapply(width = 6, by = 1, FUN = mean, align = "center", by.column=TRUE, fill=c(0))
+  colnames(covariate.rolled.means) <- paste(colnames(covariate.rolled.means),"_rolled",sep="")
+  peaks.data.ss <- cbind(peaks.data.ss,covariate.rolled.means)
+  
+  cols_pseudotime <- list(pseudotime = viridis::viridis(length(unique(peaks.data.ss$pseudotime))))
+  names(cols_pseudotime$pseudotime) <- unique(peaks.data.ss$pseudotime)
+
+  data.scaled <- select(peaks.data.ss, starts_with("chr")) %>% as.matrix() %>% scale(scale = T, center = T) %>% apply(MARGIN=2,FUN = function(vec){smoo <- smooth.spline(vec, cv = F, penalty = 0.8);smoo$y})
+  rownames(data.scaled) <- rownames(peaks.data.ss)
+  
+  # if (any(is.nan(data.scaled))) {
+  #   data.scaled[is.nan(data.scaled)] <- 0
+  # }
+
+  # Defining rowannotation colors
+  # DefaultAssay(dataset) <- "peaks"
+  # features.granges <- StringToGRanges(features.to.show)
+  # f1.range <- range(Annotation(dataset)[Annotation(dataset)$gene_name %in% covariate.genes.to.plot[1]], ignore.strand = TRUE)
+  # f2.range <- f1.range+50000
+  #features.in.f1.range <- GRangesToString(features.granges[features.granges %over% f1.range])
+  
+  range_location <- sapply(1:length(features.to.show.gr), function (i) {
+    feature <- features.to.show.gr[i]
+    case_when(feature %over% f1.range ~ "coding",
+                     feature %over% f2.range & !(feature %over% f1.range) ~ "proximal",
+                     !(feature %over% f2.range) & !(feature %over% f1.range) ~ "distal")
+  })
+  
+  ha_row_left <- rowAnnotation(
+    location = as.factor(as.character(range_location)), 
+    col = list(location = c("coding" = "cyan","proximal"="steelblue","distal"="lightblue")),
+    annotation_name_gp = grid::gpar(fontsize = 20),
+    simple_anno_size = unit(2, "cm")
+  )
+  
+  mark_at <- which(features.to.show.gr %over% links.to.highlight.peak.gr)
+  
+  ha_row_right <- rowAnnotation(
+    Marked_features = anno_mark(at=mark_at,labels=GRangesToString(links.to.highlight.peak.gr)), 
+    annotation_name_gp = grid::gpar(fontsize = 20),
+    simple_anno_size = unit(2, "cm")
+  )
+  
+  # k <- ceiling(9 / length(features.in.region)) # 9 == number of unique colors
+  # cols.named <- rep(RColorBrewer::brewer.pal(9, "Set1"), k)[1:length(features.in.region)]
+  # names(cols.named) <- features.in.region
+  # 
+  # ha_right <- rowAnnotation(
+  #   peak = features.in.region,
+  #   col = list(peak = cols.named),
+  #   show_legend = F
+  # )
+  
+  # Preparing data matrix itself
+  #heatmap.data <- as.matrix(peaks.data.ss[1:(ncol(peaks.data.ss) - (2 + 2 * length(covariate.genes.to.plot)))]) # (pseudotime + label) + (gene + gene.rolled) * n(genes)
+  fac.ord <- aggregate(peaks.data.ss$pseudotime, list(peaks.data.ss$label), mean) %>% arrange(x) %>% pull(Group.1)
+  
+  row.anno <- sapply(colnames(data.scaled), function (id) {
+    f.start <- strsplit(id, "-")[[1]][2]
+    f.end <- strsplit(id, "-")[[1]][3]
+    
+    as.numeric(f.end) - as.numeric(f.start)
+  })
+  
+  
+  cells.non.gl <- Cells(subset(dataset, subset = rv2.lineage %notin% sapply(1:5, function(n) {paste0("GL", n)})))
+  data.scaled.ga <- data.frame(data.scaled) %>% filter(rownames(data.scaled) %in% cells.non.gl)
+  colnames(data.scaled.ga) <- str_replace_all(colnames(data.scaled.ga), "\\.", "-")
+  
+  cells.non.ga <- Cells(subset(dataset, subset = rv2.lineage %notin% sapply(1:6, function(n) {paste0("GA", n)})))
+  data.scaled.gl <- data.scaled[rownames(data.scaled) %in% cells.non.ga,]
+  colnames(data.scaled.gl) <- str_replace_all(colnames(data.scaled.gl), "\\.", "-")
+  
+  ha.bot.ga <- HeatmapAnnotation(pseudotime = peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.gl,]$pseudotime, 
+                                 col = cols_pseudotime, show_legend = F, annotation_name_gp = grid::gpar(fontsize = 20),
+                                 simple_anno_size = unit(2, "cm"))
+  labels.ga <- factor(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.gl,]$label, levels = fac.ord)
+  
+  ha.bot.gl <- HeatmapAnnotation(pseudotime = peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.ga,]$pseudotime, 
+                                 col = cols_pseudotime, show_legend = F, annotation_name_gp = grid::gpar(fontsize = 20),
+                                 simple_anno_size = unit(2, "cm"))
+  labels.gl <- factor(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.ga,]$label, levels = fac.ord)
+  browser()
+  
+ 
+  cov.gl.data <- select(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.ga,], contains("rolled"))
+  colnames(cov.gl.data) <- covariate.genes.to.plot
+  gl.expression_col_fun = replicate(expr = colorRamp2(c(min(cov.gl.data), max(cov.gl.data)), c("white", "orange")),n=ncol(cov.gl.data))
+  names(gl.expression_col_fun) <- covariate.genes.to.plot
+  
+  cov.ga.data <- select(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.gl,], contains("rolled"))
+  colnames(cov.ga.data) <- covariate.genes.to.plot
+  ga.expression_col_fun = replicate(expr = colorRamp2(c(min(cov.ga.data), max(cov.ga.data)), c("white", "orange")),n=ncol(cov.ga.data))
+  names(ga.expression_col_fun) <- covariate.genes.to.plot
+  
+  ha.top.ga <- HeatmapAnnotation(df=cov.ga.data,
+                                 annotation_label = covariate.genes.to.plot,
+                                 col= ga.expression_col_fun ,
+                                 simple_anno_size = unit(1, "cm"), height = unit(8, "cm"),
+                                 annotation_name_gp = grid::gpar(fontsize = 20),
+                                 gp = grid::gpar(fontsize = 20))
+  
+  ha.top.gl <- HeatmapAnnotation(df=cov.gl.data,
+                                 annotation_label = covariate.genes.to.plot,
+                                 col= gl.expression_col_fun ,
+                                 simple_anno_size = unit(1, "cm"), height = unit(8, "cm"),
+                                 annotation_name_gp = grid::gpar(fontsize = 20),
+                                 gp = grid::gpar(fontsize = 20))
+  
+  p.1 <- Heatmap(t(data.scaled.ga) + 1,
+                 show_column_names = F, 
+                 show_row_names = F,
+                 bottom_annotation = ha.bot.ga,
+                 top_annotation = ha.top.ga,
+                 left_annotation = ha_row_left,
+                 right_annotation = ha_row_right,
+                 cluster_rows = F,
+                 column_split = labels.ga,
+                 cluster_columns = F,
+                 cluster_column_slices = F,
+                 col = viridis::magma(100),
+                 row_labels = paste(1:length(colnames(data.scaled.ga)), ".\nLength: ", row.anno, sep = ''),
+                 use_raster = T,
+                 column_names_gp = grid::gpar(fontsize = 20),
+                 row_names_gp = grid::gpar(fontsize = 20),
+                 column_title_gp = grid::gpar(fontsize = 20))
+  
+  p.2 <- Heatmap(t(data.scaled.gl) + 1,
+                 show_column_names = F,
+                 show_row_names = F,
+                 bottom_annotation = ha.bot.gl,
+                 top_annotation = ha.top.gl,
+                 left_annotation = ha_row_left,
+                 cluster_rows = F,
+                 column_split = labels.gl,
+                 cluster_columns = F,
+                 cluster_column_slices = F,
+                 col = viridis::magma(100),
+                 row_labels = paste(1:length(colnames(data.scaled.gl)), ".\nLength: ", row.anno, sep = ''),
+                 use_raster = T,
+                 column_names_gp = grid::gpar(fontsize = 20),
+                 row_names_gp = grid::gpar(fontsize = 20),
+                 column_title_gp = grid::gpar(fontsize = 20))
+  
+  return(patchwork::wrap_plots(p.1,p.2, nrow = 1, ncol = 2))
+}
