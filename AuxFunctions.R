@@ -1815,7 +1815,7 @@ ConstructBed_TobiasGr <- function(gr,group,TF,file=TRUE, gr.only=FALSE){
   } else {
     require(valr)
     TF.ni <- grep(x=names(gr), pattern=str_to_upper(TF))
-    for (v in TF.ni) {
+    beds.out<-lapply(TF.ni, function(v) {
       gr.tmp <- gr[[v]]
       
       group.ni <- which(colnames(elementMetadata(gr.tmp))==paste(group,"_bound",sep=""))
@@ -1835,10 +1835,14 @@ ConstructBed_TobiasGr <- function(gr,group,TF,file=TRUE, gr.only=FALSE){
         invisible(bed.out)
         write_tsv(bed.out, file=paste(group,"_",names(gr)[v],"_.bed",sep=""), col_names=FALSE)
       }
-    }
+    })
   
   }
-}
+  if(gr.only){
+    suppressWarnings(beds.out<-unlist(as(beds.out, "GRangesList")))
+  return(beds.out)
+  }
+  }
 
 findEChO <- function(EChO.matrix, span, foci, EChO.thr=120){
   coordinates <- apply(foci[span$line,] %>% select(c("chr","start","end")), 1, function(r){r<-str_remove_all(string = r,pattern = " ");paste(r,collapse = "-")})
