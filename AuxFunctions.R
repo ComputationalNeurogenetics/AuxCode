@@ -1864,6 +1864,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   features.granges.gr <- all.features.gr[all.features.gr %over% StringToGRanges(region.of.interest)]
   features.in.region <- GRangesToString(features.granges.gr)
   
+  DefaultAssay(dataset) <- "peaks"
   f1.range <- range(Annotation(dataset)[Annotation(dataset)$gene_name %in% covariate.genes.to.plot[1]], ignore.strand = TRUE)
   f2.range <- f1.range+50000
   
@@ -1880,7 +1881,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   # Preparing covariate data
   id.to.plot <- convert_feature_identity(dataset, "RNA", covariate.genes.to.plot, "symbol")
   eoi <- data.frame(expression.data[,colnames(expression.data) %in% id.to.plot])
-  colnames(eoi) <- id.to.plot
+  colnames(eoi) <- convert_feature_identity(dataset, "RNA", colnames(eoi), "ens")
   rownames(eoi) <- rownames(expression.data)
   eoi$pseudotime <- dataset$VIA_pseudotime
   eoi <- eoi %>% arrange(pseudotime)
@@ -1896,14 +1897,14 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   col.names[length(col.names)] <- "label"
   colnames(peaks.data.ss) <- col.names
  
-  f1.expression <- data.frame(eoi %>% select(all_of(id.to.plot)), row.names = rownames(eoi))
+  f1.expression <- data.frame(eoi %>% select(all_of(covariate.genes.to.plot)), row.names = rownames(eoi))
   peaks.data.ss <- merge(peaks.data.ss, f1.expression, by = "row.names")
   rownames(peaks.data.ss) <- peaks.data.ss$Row.names
   peaks.data.ss <- peaks.data.ss[,2:ncol(peaks.data.ss)] 
   
   peaks.data.ss <- peaks.data.ss %>% arrange(pseudotime, id.to.plot[1])
   
-  covariate.rolled.means <- rownames_to_column(peaks.data.ss, var = "barcode") %>% as_tibble() %>% select(starts_with("ENS")) %>% zoo::rollapply(width = 6, by = 1, FUN = mean, align = "center", by.column=TRUE, fill=c(0))
+  covariate.rolled.means <- rownames_to_column(peaks.data.ss, var = "barcode") %>% as_tibble() %>% select(contains(covariate.genes.to.plot)) %>% zoo::rollapply(width = 6, by = 1, FUN = mean, align = "center", by.column=TRUE, fill=c(0))
   colnames(covariate.rolled.means) <- paste(colnames(covariate.rolled.means),"_rolled",sep="")
   peaks.data.ss <- cbind(peaks.data.ss,covariate.rolled.means)
   
@@ -1933,7 +1934,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   
   ha_row_left <- rowAnnotation(
     location = as.factor(as.character(range_location)), 
-    col = list(location = c("coding" = "cyan","proximal"="steelblue","distal"="lightblue")),
+    col = list(location = c("coding" = "firebrick2","proximal"="cornflowerblue","distal"="lightskyblue")),
     annotation_name_gp = grid::gpar(fontsize = 20),
     simple_anno_size = unit(2, "cm")
   )
@@ -1985,9 +1986,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
                                  col = cols_pseudotime, show_legend = F, annotation_name_gp = grid::gpar(fontsize = 20),
                                  simple_anno_size = unit(2, "cm"))
   labels.gl <- factor(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.ga,]$label, levels = fac.ord)
-  browser()
-  
- 
+
   cov.gl.data <- select(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.ga,], contains("rolled"))
   colnames(cov.gl.data) <- covariate.genes.to.plot
   gl.expression_col_fun = replicate(expr = colorRamp2(c(min(cov.gl.data), max(cov.gl.data)), c("white", "orange")),n=ncol(cov.gl.data))
@@ -2001,14 +2000,14 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   ha.top.ga <- HeatmapAnnotation(df=cov.ga.data,
                                  annotation_label = covariate.genes.to.plot,
                                  col= ga.expression_col_fun ,
-                                 simple_anno_size = unit(1, "cm"), height = unit(8, "cm"),
+                                 simple_anno_size = unit(3, "cm"), height = unit(8, "cm"),
                                  annotation_name_gp = grid::gpar(fontsize = 20),
                                  gp = grid::gpar(fontsize = 20))
   
   ha.top.gl <- HeatmapAnnotation(df=cov.gl.data,
                                  annotation_label = covariate.genes.to.plot,
                                  col= gl.expression_col_fun ,
-                                 simple_anno_size = unit(1, "cm"), height = unit(8, "cm"),
+                                 simple_anno_size = unit(3, "cm"), height = unit(8, "cm"),
                                  annotation_name_gp = grid::gpar(fontsize = 20),
                                  gp = grid::gpar(fontsize = 20))
   
@@ -2046,6 +2045,8 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
                  column_names_gp = grid::gpar(fontsize = 20),
                  row_names_gp = grid::gpar(fontsize = 20),
                  column_title_gp = grid::gpar(fontsize = 20))
-  
-  return(patchwork::wrap_plots(p.1,p.2, nrow = 1, ncol = 2))
+
+  return(list(p.1,p.2))
 }
+
+
