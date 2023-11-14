@@ -74,10 +74,10 @@ get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NUL
 
 
 ConstructBed_TobiasGr <- function(gr,group,TF,file=TRUE, gr.only=FALSE){
+  require(valr)
   if(any(length(group)>1 | length(TF)>1)){
     errorCondition("Only one group and TF at the time are supported")
   } else {
-    require(valr)
     TF.ni <- grep(x=names(gr), pattern=str_to_upper(TF))
     beds.out<-lapply(TF.ni, function(v) {
       gr.tmp <- gr[[v]]
@@ -130,20 +130,52 @@ get.TF.motifs <- function(tobias.gr, remove_repeat=FALSE){
   }
 }
 
-get.bounds <- function(tobias.gr, conditions, TF.motif, gr.filter=NULL){
+get.footprints <- function(tobias.gr, conditions, TF.motif, gr.filter=NULL, binary=TRUE){
   require(Signac)
   tob.sub <- tobias.gr[[TF.motif]]
   if (!is.null(gr.filter)){
     if (!class(gr.filter)=="GRanges"){gr.filter <- StringToGRanges(gr.filter)}
     tob.sub <- tob.sub[tob.sub %over% gr.filter]
   }
-  bound.info <- elementMetadata(tob.sub)[,paste(conditions,"_bound",sep="")]
-  out <- cbind(coordinate=GRangesToString(tob.sub), bound.info)
-  return(out)
+  if (binary & length(tob.sub)>0){
+    bound.info <- elementMetadata(tob.sub)[,paste(conditions,"_bound",sep="")]
+    out <- cbind(coordinate=GRangesToString(tob.sub), bound.info)
+    return(out)
+  } else if (!binary & length(tob.sub)>0) {
+    bound.info <- elementMetadata(tob.sub)[,paste(conditions,"_score",sep="")]
+    out <- cbind(coordinate=GRangesToString(tob.sub), bound.info)
+    return(out)
+  } else {
+    out <- as.data.frame(matrix(nrow=1, ncol=length(conditions), data = NA))
+    if (binary){
+      colnames(out) <- paste(conditions,"_bound",sep="")
+    } else {
+      colnames(out) <- paste(conditions,"_score",sep="")
+    }
+    return(out)
+  }
 }
 
-formFootprintMatrix.overConditions <- function(tobias.gr, conditions, gr.filter){
+condence.footprints <- function(footprints.df, binary){
+  footprint.col.i <- str_detect(string = colnames(footprints.df), pattern = ".*_bound")
+  if (binary & !any(is.na(footprints.df))){
+    tmp.1 <- apply(footprints.df[,footprint.col.i],2,sum)
+    tmp.1[tmp.1>0] <-1
+    return(tmp.1)
+  } else if (!binary & !any(is.na(footprints.df))) {
+    tmp.1 <- apply(footprints.df[,footprint.col.i],2,mean)
+    return(tmp.1)
+  } else {
+    return(footprints.df[,footprint.col.i])
+  }
+}
+
+
+formFootprintMatrix.overConditions <- function(tobias.gr, conditions, gr.filter, binary=TRUE){
   all.motifs <- get.TF.motifs(tobias.gr)
-  
-  sapply(all.motifs, function(m){})
+  out<-sapply(all.motifs, function(m){
+      tmp.footprints <- get.footprints(tobias.gr, conditions = conditions, TF.motif=m, gr.filter=gr.filter)
+      unlist(condence.footprints(tmp.footprints,binary=binary))
+    })
+  return(as.data.frame(out))
 }
