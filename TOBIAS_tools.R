@@ -73,6 +73,42 @@ get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NUL
 }
 
 
+ConstructBed_TobiasGr <- function(gr,group,TF,file=TRUE, gr.only=FALSE){
+  if(any(length(group)>1 | length(TF)>1)){
+    errorCondition("Only one group and TF at the time are supported")
+  } else {
+    require(valr)
+    TF.ni <- grep(x=names(gr), pattern=str_to_upper(TF))
+    beds.out<-lapply(TF.ni, function(v) {
+      gr.tmp <- gr[[v]]
+      
+      group.ni <- which(colnames(elementMetadata(gr.tmp))==paste(group,"_bound",sep=""))
+      score.ni <- which(colnames(elementMetadata(gr.tmp))==paste(group,"_score",sep=""))
+      
+      gr.out <- gr.tmp[(elementMetadata(gr.tmp)[,group.ni]==1)]
+      if (!gr.only){
+        bed.out <- gr_to_bed(gr.out)
+        bed.out$footprint_score <- elementMetadata(gr.out)[,score.ni]
+      } else {
+        bed.out <- gr.out
+      }
+      
+      if (is.null(file)){
+        return(bed.out)
+      } else {
+        invisible(bed.out)
+        write_tsv(bed.out, file=paste(group,"_",names(gr)[v],"_.bed",sep=""), col_names=FALSE)
+      }
+    })
+    
+  }
+  if(gr.only){
+    suppressWarnings(beds.out<-unlist(as(beds.out, "GRangesList")))
+    return(beds.out)
+  }
+}
+
+
 get.conditions <- function(tobias.gr){
   all.metadata <- lapply(tobias.gr,function(f){colnames(elementMetadata(f))})
   all.equal <- all(sapply(all.metadata, identical, all.metadata[[1]]))
@@ -94,19 +130,20 @@ get.TF.motifs <- function(tobias.gr, remove_repeat=FALSE){
   }
 }
 
-get.bounds <- function(tobias.gr, conditions, TF.motif){
+get.bounds <- function(tobias.gr, conditions, TF.motif, gr.filter=NULL){
   require(Signac)
   tob.sub <- tobias.gr[[TF.motif]]
+  if (!is.null(gr.filter)){
+    if (!class(gr.filter)=="GRanges"){gr.filter <- StringToGRanges(gr.filter)}
+    tob.sub <- tob.sub[tob.sub %over% gr.filter]
+  }
   bound.info <- elementMetadata(tob.sub)[,paste(conditions,"_bound",sep="")]
-  out <- cbind(tibble(coordinate=GRangesToString(tob.sub)), bound.info)
+  out <- cbind(coordinate=GRangesToString(tob.sub), bound.info)
   return(out)
 }
 
-
-TOBIAS.list.to.tibble <- function(tobias.list){
-  # Assuming identical conditions for each element
-  all.tf.motifs <- names(tobias.list)
-  metadata.colnames <- colnames(elementMetadata(tobias.list[[1]]))
-  conditions <- str_extract(string=metadata.colnames, pattern=".*_bound") %>% str_remove(pattern = "_bound") %>% na.omit()
+formFootprintMatrix.overConditions <- function(tobias.gr, conditions, gr.filter){
+  all.motifs <- get.TF.motifs(tobias.gr)
   
+  sapply(all.motifs, function(m){})
 }
