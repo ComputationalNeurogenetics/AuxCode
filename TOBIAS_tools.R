@@ -157,7 +157,7 @@ get.footprints <- function(tobias.gr, conditions, TF.motif, gr.filter=NULL, bina
 }
 
 condence.footprints <- function(footprints.df, binary){
-  footprint.col.i <- str_detect(string = colnames(footprints.df), pattern = ".*_bound")
+  if (binary){footprint.col.i <- str_detect(string = colnames(footprints.df), pattern = ".*_bound")} else {footprint.col.i <- str_detect(string = colnames(footprints.df), pattern = ".*_score")}
   if (binary & !any(is.na(footprints.df))){
     tmp.1 <- apply(footprints.df[,footprint.col.i],2,sum)
     tmp.1[tmp.1>0] <-1
@@ -171,11 +171,84 @@ condence.footprints <- function(footprints.df, binary){
 }
 
 
-formFootprintMatrix.overConditions <- function(tobias.gr, conditions, gr.filter, binary=TRUE){
+formFootprintMatrix.overConditions <- function(tobias.gr, conditions, gr.filter, binary=TRUE, na.omit=FALSE){
   all.motifs <- get.TF.motifs(tobias.gr)
-  out<-sapply(all.motifs, function(m){
-      tmp.footprints <- get.footprints(tobias.gr, conditions = conditions, TF.motif=m, gr.filter=gr.filter)
+  out<-as.data.frame(sapply(all.motifs, function(m){
+      tmp.footprints <- get.footprints(tobias.gr, conditions = conditions, TF.motif=m, gr.filter=gr.filter,binary=binary)
       unlist(condence.footprints(tmp.footprints,binary=binary))
-    })
+    }))
+  if (na.omit){out<- out[,apply(out,2,function(t){!all(is.na(t))})]}
   return(as.data.frame(out))
+}
+
+readHOCOMOCO.metadata <- function(path){
+  require(jsonlite)
+  require(dplyr)
+  lines <- readLines(path)
+  lines <- lapply(lines, fromJSON)
+  lines <- lapply(lines, unlist)
+  x <- bind_rows(lines)
+  return(x)
+}
+
+getTF.gene_symbol <- function(TF.motif, HOCOMOCO.metadata, H.version="H12"){
+  if (H.version=="H12"){gene_symbol <- filter(HOCOMOCO.metadata, name %in% TF.motif) %>% pull(masterlist_info.species.MOUSE.gene_symbol)} else {gene_symbol <- filter(HOCOMOCO.metadata, Model %in% TF.motif) %>% pull(`Transcription factor`)}
+  return(gene_symbol)
+}
+
+
+plotTFfootprint.heatmap <- function(footprint.matrix, filter.unbound=FALSE, with.expression=FALSE, filter.no.expressed.TF=FALSE, Seurat.dataset=NULL, HOCOMOCO.metadata=NULL, H.version="H12"){
+  require(ComplexHeatmap)
+  require(circlize)
+  require(patchwork)
+  
+  conditions <- str_remove(string = rownames(footprint.matrix), pattern = "_bound") %>% str_remove(pattern = "_score")
+  rownames(footprint.matrix) <- conditions
+  if (H.version=="H12"){colnames(footprint.matrix) <- str_remove(string=colnames(footprint.matrix), pattern = "_.*")} else {colnames(footprint.matrix) <- str_remove(string = colnames(footprint.matrix), pattern = "^.*\\.[:alpha:]+_")}
+  if (filter.unbound){keep.i <- which(colSums(footprint.matrix)>0); footprint.matrix<-footprint.matrix[,keep.i]}
+
+  if (with.expression & !is.null(Seurat.dataset) & !is.null(HOCOMOCO.metadata)){
+    TF.motif.names <- colnames(footprint.matrix)
+    TF.gene_symbols <- getTF.gene_symbol(TF.motif = TF.motif.names, HOCOMOCO.metadata = HOCOMOCO.metadata, H.version = H.version)
+    TF.ensg <- convert_feature_identity(Seurat.dataset, assay = "RNA", features = TF.gene_symbols, feature.format = "symbol")
+ 
+    DefaultAssay(Seurat.dataset) <- "RNA"
+    TF.expression.data.avg <- AverageExpression(Seurat.dataset, assays = "RNA", features = na.omit(TF.ensg), group.by = "rv2.lineage")[[1]][,conditions]
+    rownames(TF.expression.data.avg) <- convert_feature_identity(Seurat.dataset, assay = "RNA", features = rownames(TF.expression.data.avg), feature.format = "ens")
+    
+    TF.i <- match(rownames(TF.expression.data.avg), TF.gene_symbols)
+    
+    footprint.matrix <- footprint.matrix[,TF.i]
+    
+    # Filter non-expressed TFs
+    
+    if (filter.no.expressed.TF){
+      TF.i.2 <- rowMeans(TF.expression.data.avg)>quantile(TF.expression.data.avg, 0.5)
+      footprint.matrix <- footprint.matrix[,TF.i.2]
+      TF.expression.data.avg<-TF.expression.data.avg[TF.i.2,]
+    }
+    TF.expression.data.avg<-t(scale(t(TF.expression.data.avg), center = FALSE))
+    color.func.exp <- colorRamp2(c(min(TF.expression.data.avg), mean(apply(TF.expression.data.avg,1,mean)), max(TF.expression.data.avg)), c("white", "steelblue", "red"))
+    
+    # Perform TF expression splitting
+    # TODO: Add iterative test to find number of centers?
+    #kmeans.centers <- matrix(nrow = 4, ncol = ncol(TF.expression.data.avg),byrow = TRUE,c(seq(max(TF.expression.data.avg),0,length.out=ncol(TF.expression.data.avg)),seq(0,max(TF.expression.data.avg),length.out=ncol(TF.expression.data.avg)),rep(0,ncol(TF.expression.data.avg)),rep(mean(TF.expression.data.avg),ncol(TF.expression.data.avg))))
+    TF.expression.mat.split <- kmeans(TF.expression.data.avg,centers=5, iter.max = 100)
+  }
+  
+  #foot.dist <- dist(t(footprint.matrix), method="euclidean")
+  #foot.hclust <- hclust(foot.dist, method = "complete")
+  
+  if (!any(footprint.matrix>0 & footprint.matrix<1)){color.func.foot <- c("black","green")} else {color.func.foot <- colorRamp2(c(min(footprint.matrix), mean(apply(footprint.matrix,2,mean)), max(footprint.matrix)), c("white", "yellow", "red"))}
+  p.foot <- Heatmap(t(footprint.matrix), cluster_columns = FALSE, cluster_rows = TRUE, row_names_gp = gpar(fontsize = 6), col = color.func.foot, split=TF.expression.mat.split$cluster)
+  
+  if (with.expression){
+    p.exp <- Heatmap(TF.expression.data.avg, cluster_columns = FALSE, cluster_rows = FALSE, row_names_gp = gpar(fontsize = 6), col = color.func.exp,split=TF.expression.mat.split$cluster)
+    p.final <- p.foot + p.exp + plot_layout(ncol=2)
+    return(p.final)
+  } else {
+    return(p.foot)
+  }
+    
+  
 }
