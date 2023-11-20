@@ -178,7 +178,7 @@ formFootprintMatrix.overConditions <- function(tobias.gr, conditions, gr.filter,
       unlist(condence.footprints(tmp.footprints,binary=binary))
     }))
   if (na.omit){out<- out[,apply(out,2,function(t){!all(is.na(t))})]}
-  return(as.data.frame(out))
+  return(list(footprint.matrix=as.data.frame(out),feature=gr.filter))
 }
 
 readHOCOMOCO.metadata <- function(path){
@@ -201,6 +201,9 @@ plotTFfootprint.heatmap <- function(footprint.matrix, filter.unbound=FALSE, with
   require(ComplexHeatmap)
   require(circlize)
   require(patchwork)
+  
+  feature <- footprint.matrix$feature
+  footprint.matrix<-footprint.matrix$footprint.matrix
   
   conditions <- str_remove(string = rownames(footprint.matrix), pattern = "_bound") %>% str_remove(pattern = "_score")
   rownames(footprint.matrix) <- conditions
@@ -236,14 +239,23 @@ plotTFfootprint.heatmap <- function(footprint.matrix, filter.unbound=FALSE, with
     TF.expression.mat.split <- kmeans(TF.expression.data.avg,centers=5, iter.max = 100)
   }
   
+  feat.accessibility.data.avg <- AverageExpression(Seurat.dataset, assays = "peaks", features = feature, group.by = "rv2.lineage")[[1]][,conditions]
+  
+  footprint.matrix <- t(scale(t(footprint.matrix),scale=feat.accessibility.data.avg,center=FALSE))
+  # bin.mask <- footprint.matrix>quantile(footprint.matrix,.75)
+  # footprint.matrix[bin.mask] <-1
+  # footprint.matrix[!bin.mask] <-0
+  
+  column_ha = HeatmapAnnotation(avg.acc = anno_barplot(feat.accessibility.data.avg), col=list(avg.acc="darkgreen"))
+  
   #foot.dist <- dist(t(footprint.matrix), method="euclidean")
   #foot.hclust <- hclust(foot.dist, method = "complete")
   
-  if (!any(footprint.matrix>0 & footprint.matrix<1)){color.func.foot <- c("black","green")} else {color.func.foot <- colorRamp2(c(min(footprint.matrix), mean(apply(footprint.matrix,2,mean)), max(footprint.matrix)), c("white", "yellow", "red"))}
-  p.foot <- Heatmap(t(footprint.matrix), cluster_columns = FALSE, cluster_rows = TRUE, row_names_gp = gpar(fontsize = 6), col = color.func.foot, split=TF.expression.mat.split$cluster)
+  if (!any(footprint.matrix>0 & footprint.matrix<1)){color.func.foot <- c("white","darkgreen")} else {color.func.foot <- colorRamp2(c(min(footprint.matrix), median(apply(footprint.matrix,2,median)), max(footprint.matrix)), c("darkblue", "green", "yellow"))}
+  p.foot <- Heatmap(t(footprint.matrix), cluster_columns = FALSE, cluster_rows = TRUE, row_names_gp = gpar(fontsize = 6), col = color.func.foot, split=TF.expression.mat.split$cluster, top_annotation = column_ha)
   
   if (with.expression){
-    p.exp <- Heatmap(TF.expression.data.avg, cluster_columns = FALSE, cluster_rows = FALSE, row_names_gp = gpar(fontsize = 6), col = color.func.exp,split=TF.expression.mat.split$cluster)
+    p.exp <- Heatmap(TF.expression.data.avg, cluster_columns = FALSE, cluster_rows = TRUE, row_names_gp = gpar(fontsize = 6), col = color.func.exp,split=TF.expression.mat.split$cluster)
     p.final <- p.foot + p.exp + plot_layout(ncol=2)
     return(p.final)
   } else {

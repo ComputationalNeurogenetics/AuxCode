@@ -1541,7 +1541,7 @@ findEChO <- function(EChO.matrix, span, foci, EChO.thr=120){
   return(list(EChO.true.i=EChO.true.i,coordinates=coordinates[EChO.true.i]))
 }
   
-plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.of.interest){
+plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.of.interest, rV2=TRUE){
   
   DefaultAssay(dataset) <- "peaks"
   peaks.data <- FetchData(dataset, vars = rownames(dataset))
@@ -1657,7 +1657,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
     as.numeric(f.end) - as.numeric(f.start)
   })
   
-  
+  if (rV2){
   cells.non.gl <- Cells(subset(dataset, subset = rv2.lineage %notin% sapply(1:5, function(n) {paste0("GL", n)})))
   data.scaled.ga <- data.frame(data.scaled) %>% filter(rownames(data.scaled) %in% cells.non.gl)
   colnames(data.scaled.ga) <- str_replace_all(colnames(data.scaled.ga), "\\.", "-")
@@ -1736,6 +1736,51 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
                  column_title_gp = grid::gpar(fontsize = 20))
 
   return(list(p.1,p.2))
+  } else {
+    colnames(data.scaled) <- str_replace_all(colnames(data.scaled), "\\.", "-")
+
+    ha.bot <- HeatmapAnnotation(pseudotime = peaks.data.ss$pseudotime, 
+                                   col = cols_pseudotime, show_legend = F, annotation_name_gp = grid::gpar(fontsize = 20),
+                                   simple_anno_size = unit(2, "cm"))
+    labels <- factor(peaks.data.ss$label, levels = fac.ord)
+    
+    ha.bot <- HeatmapAnnotation(pseudotime = peaks.data.ss$pseudotime, 
+                                   col = cols_pseudotime, show_legend = F, annotation_name_gp = grid::gpar(fontsize = 20),
+                                   simple_anno_size = unit(2, "cm"))
+    labels <- factor(peaks.data.ss$label, levels = fac.ord)
+    
+    cov.data <- select(peaks.data.ss, contains("rolled"))
+    colnames(cov.data) <- covariate.genes.to.plot
+    expression_col_fun = replicate(expr = colorRamp2(c(min(cov.data), max(cov.data)), c("white", "orange")),n=ncol(cov.data))
+    names(expression_col_fun) <- covariate.genes.to.plot
+    
+    ha.top <- HeatmapAnnotation(df=cov.data,
+                                   annotation_label = covariate.genes.to.plot,
+                                   col= expression_col_fun ,
+                                   simple_anno_size = unit(3, "cm"), height = unit(8, "cm"),
+                                   annotation_name_gp = grid::gpar(fontsize = 20),
+                                   gp = grid::gpar(fontsize = 20))
+    
+
+    p.1 <- Heatmap(t(data.scaled) + 1,
+                   show_column_names = F, 
+                   show_row_names = F,
+                   bottom_annotation = ha.bot.ga,
+                   top_annotation = ha.top.ga,
+                   left_annotation = ha_row_left,
+                   right_annotation = ha_row_right,
+                   cluster_rows = F,
+                   column_split = labels.ga,
+                   cluster_columns = F,
+                   cluster_column_slices = F,
+                   col = viridis::magma(100),
+                   row_labels = paste(1:length(colnames(data.scaled.ga)), ".\nLength: ", row.anno, sep = ''),
+                   use_raster = T,
+                   column_names_gp = grid::gpar(fontsize = 20),
+                   row_names_gp = grid::gpar(fontsize = 20),
+                   column_title_gp = grid::gpar(fontsize = 20))
+    return(p.1)
+  }
 }
 
 
