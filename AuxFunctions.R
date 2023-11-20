@@ -1557,7 +1557,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   f1.range <- range(Annotation(dataset)[Annotation(dataset)$gene_name %in% covariate.genes.to.plot[1]], ignore.strand = TRUE)
   f2.range <- f1.range+50000
   
-  # Select features to be included: coding+promixal+significant distal ones
+  # dplyr::select features to be included: coding+promixal+significant distal ones
   links.all <- Links(dataset)[Links(dataset) %over% features.granges.gr & elementMetadata(Links(dataset))$pvalue < 0.01]
   links.all.peaks.gr <- StringToGRanges(elementMetadata(links.all)$peak)
   
@@ -1586,14 +1586,14 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   col.names[length(col.names)] <- "label"
   colnames(peaks.data.ss) <- col.names
  
-  f1.expression <- data.frame(eoi %>% select(all_of(covariate.genes.to.plot)), row.names = rownames(eoi))
+  f1.expression <- data.frame(eoi %>% dplyr::select(all_of(covariate.genes.to.plot)), row.names = rownames(eoi))
   peaks.data.ss <- merge(peaks.data.ss, f1.expression, by = "row.names")
   rownames(peaks.data.ss) <- peaks.data.ss$Row.names
   peaks.data.ss <- peaks.data.ss[,2:ncol(peaks.data.ss)] 
   
   peaks.data.ss <- peaks.data.ss %>% arrange(pseudotime, id.to.plot[1])
   
-  covariate.rolled.means <- rownames_to_column(peaks.data.ss, var = "barcode") %>% as_tibble() %>% select(contains(covariate.genes.to.plot)) %>% zoo::rollapply(width = 6, by = 1, FUN = mean, align = "center", by.column=TRUE, fill=c(0))
+  covariate.rolled.means <- rownames_to_column(peaks.data.ss, var = "barcode") %>% as_tibble() %>% dplyr::select(contains(covariate.genes.to.plot)) %>% zoo::rollapply(width = 6, by = 1, FUN = mean, align = "center", by.column=TRUE, fill=c(0))
   colnames(covariate.rolled.means) <- paste(colnames(covariate.rolled.means),"_rolled",sep="")
   peaks.data.ss <- cbind(peaks.data.ss,covariate.rolled.means)
   
@@ -1601,7 +1601,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   names(cols_pseudotime$pseudotime) <- unique(peaks.data.ss$pseudotime)
 
 
-  data.scaled.tmp <- select(peaks.data.ss, starts_with("chr")) %>% as.matrix() %>% scale(scale = T, center = T) 
+  data.scaled.tmp <- dplyr::select(peaks.data.ss, starts_with("chr")) %>% as.matrix() %>% scale(scale = T, center = T) 
   feature.filter.l <- colSums(is.finite(data.scaled.tmp))>0
   data.scaled.tmp[!is.finite(data.scaled.tmp)] <- 0
   data.scaled <-apply(data.scaled.tmp,MARGIN=2,FUN = function(vec){smoo <- smooth.spline(vec, cv = F, penalty = 0.8);smoo$y})
@@ -1680,12 +1680,12 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
                                  simple_anno_size = unit(2, "cm"))
   labels.gl <- factor(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.ga,]$label, levels = fac.ord)
 
-  cov.gl.data <- select(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.ga,], contains("rolled"))
+  cov.gl.data <- dplyr::select(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.ga,], contains("rolled"))
   colnames(cov.gl.data) <- covariate.genes.to.plot
   gl.expression_col_fun = replicate(expr = colorRamp2(c(min(cov.gl.data), max(cov.gl.data)), c("white", "orange")),n=ncol(cov.gl.data))
   names(gl.expression_col_fun) <- covariate.genes.to.plot
   
-  cov.ga.data <- select(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.gl,], contains("rolled"))
+  cov.ga.data <- dplyr::select(peaks.data.ss[rownames(peaks.data.ss) %in% cells.non.gl,], contains("rolled"))
   colnames(cov.ga.data) <- covariate.genes.to.plot
   ga.expression_col_fun = replicate(expr = colorRamp2(c(min(cov.ga.data), max(cov.ga.data)), c("white", "orange")),n=ncol(cov.ga.data))
   names(ga.expression_col_fun) <- covariate.genes.to.plot
@@ -1753,7 +1753,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
                                    simple_anno_size = unit(2, "cm"))
     labels <- factor(peaks.data.ss$label, levels = fac.ord)
     
-    cov.data <- select(peaks.data.ss, contains("rolled"))
+    cov.data <- dplyr::select(peaks.data.ss, contains("rolled"))
     colnames(cov.data) <- covariate.genes.to.plot
     expression_col_fun = replicate(expr = colorRamp2(c(min(cov.data), max(cov.data)), c("white", "orange")),n=ncol(cov.data))
     names(expression_col_fun) <- covariate.genes.to.plot
