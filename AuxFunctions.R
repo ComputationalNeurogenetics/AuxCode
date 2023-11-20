@@ -1600,7 +1600,6 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   cols_pseudotime <- list(pseudotime = viridis::viridis(length(unique(peaks.data.ss$pseudotime))))
   names(cols_pseudotime$pseudotime) <- unique(peaks.data.ss$pseudotime)
 
-
   data.scaled.tmp <- dplyr::select(peaks.data.ss, starts_with("chr")) %>% as.matrix() %>% scale(scale = T, center = T) 
   feature.filter.l <- colSums(is.finite(data.scaled.tmp))>0
   data.scaled.tmp[!is.finite(data.scaled.tmp)] <- 0
