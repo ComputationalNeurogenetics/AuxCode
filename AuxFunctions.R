@@ -1600,7 +1600,9 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   cols_pseudotime <- list(pseudotime = viridis::viridis(length(unique(peaks.data.ss$pseudotime))))
   names(cols_pseudotime$pseudotime) <- unique(peaks.data.ss$pseudotime)
 
-  data.scaled <- select(peaks.data.ss, starts_with("chr")) %>% as.matrix() %>% scale(scale = T, center = T) %>% apply(MARGIN=2,FUN = function(vec){smoo <- smooth.spline(vec, cv = F, penalty = 0.8);smoo$y})
+  data.scaled.tmp <- select(peaks.data.ss, starts_with("chr")) %>% as.matrix() %>% scale(scale = T, center = T) 
+  data.scaled.tmp <- data.scaled.tmp[,colSums(is.finite(data.scaled.tmp))>0]
+  data.scaled <-apply(data.scaled.tmp,MARGIN=2,FUN = function(vec){smoo <- smooth.spline(vec, cv = F, penalty = 0.8);smoo$y})
   rownames(data.scaled) <- rownames(peaks.data.ss)
   
   # if (any(is.nan(data.scaled))) {
