@@ -1600,9 +1600,10 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   cols_pseudotime <- list(pseudotime = viridis::viridis(length(unique(peaks.data.ss$pseudotime))))
   names(cols_pseudotime$pseudotime) <- unique(peaks.data.ss$pseudotime)
 
+
   data.scaled.tmp <- select(peaks.data.ss, starts_with("chr")) %>% as.matrix() %>% scale(scale = T, center = T) 
   feature.filter.l <- colSums(is.finite(data.scaled.tmp))>0
-  data.scaled.tmp <- data.scaled.tmp[,feature.filter.l]
+  data.scaled.tmp[!is.finite(data.scaled.tmp)] <- 0
   data.scaled <-apply(data.scaled.tmp,MARGIN=2,FUN = function(vec){smoo <- smooth.spline(vec, cv = F, penalty = 0.8);smoo$y})
   rownames(data.scaled) <- rownames(peaks.data.ss)
   
@@ -1625,7 +1626,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   })
   
   ha_row_left <- rowAnnotation(
-    location = as.factor(as.character(range_location)[feature.filter.l]), 
+    location = as.factor(as.character(range_location)), 
     col = list(location = c("coding" = "firebrick2","proximal"="cornflowerblue","distal"="lightskyblue")),
     annotation_name_gp = grid::gpar(fontsize = 20),
     simple_anno_size = unit(2, "cm")
@@ -1634,7 +1635,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   mark_at <- which(features.to.show.gr %over% links.to.highlight.peak.gr)
   
   ha_row_right <- rowAnnotation(
-    Marked_features = anno_mark(at=mark_at,labels=GRangesToString(links.to.highlight.peak.gr)[feature.filter.l]), 
+    Marked_features = anno_mark(at=mark_at,labels=GRangesToString(links.to.highlight.peak.gr)), 
     annotation_name_gp = grid::gpar(fontsize = 20),
     simple_anno_size = unit(2, "cm")
   )
