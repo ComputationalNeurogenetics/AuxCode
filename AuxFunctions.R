@@ -1593,7 +1593,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   
   peaks.data.ss <- peaks.data.ss %>% arrange(pseudotime, id.to.plot[1])
   
-  covariate.rolled.means <- rownames_to_column(peaks.data.ss, var = "barcode") %>% as_tibble() %>% dplyr::select(contains(covariate.genes.to.plot)) %>% zoo::rollapply(width = 6, by = 1, FUN = mean, align = "center", by.column=TRUE, fill=c(0))
+  covariate.rolled.means <- rownames_to_column(peaks.data.ss, var = "barcode") %>% as_tibble() %>% dplyr::select(contains(str_replace(string = covariate.genes.to.plot, pattern = "-", replacement = "."))) %>% zoo::rollapply(width = 6, by = 1, FUN = mean, align = "center", by.column=TRUE, fill=c(0))
   colnames(covariate.rolled.means) <- paste(colnames(covariate.rolled.means),"_rolled",sep="")
   peaks.data.ss <- cbind(peaks.data.ss,covariate.rolled.means)
   
