@@ -226,7 +226,7 @@ readHOCOMOCO.metadata <- function(path){
 }
 
 getTF.gene_symbol <- function(TF.motif, HOCOMOCO.metadata, H.version="H12"){
-  if (H.version=="H12"){gene_symbol <- filter(HOCOMOCO.metadata, name %in% TF.motif) %>% pull(masterlist_info.species.MOUSE.gene_symbol)} else {gene_symbol <- filter(HOCOMOCO.metadata, Model %in% TF.motif) %>% pull(`Transcription factor`)}
+  if (H.version=="H12"){gene_symbol <- dplyr::filter(HOCOMOCO.metadata, name %in% TF.motif) %>% pull(masterlist_info.species.MOUSE.gene_symbol)} else {gene_symbol <- dplyr::filter(HOCOMOCO.metadata, Model %in% TF.motif) %>% pull(`Transcription factor`)}
   return(gene_symbol)
 }
 
