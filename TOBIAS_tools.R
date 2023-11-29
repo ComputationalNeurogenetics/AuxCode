@@ -37,8 +37,9 @@ get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NUL
       # to convert the bed-file into a column-named data frame.
       # The Granges inherits the column names and thus is can be indexed by column names.
       overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
-      selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
+      selected.cols.i <- TRUE#!grepl(pattern=".*_log2fc",x=colnames(overview.df))
       overview.df.import <- overview.df[,selected.cols.i]
+      colnames(overview.df.import) <- str_replace(string = colnames(overview.df.import), pattern = "_footprints_bound", replacement = "_bound") %>% str_replace(pattern = "_footprints_score", replacement = "_score")
       # TODO: This could be significantly faster if one first catenates all files and reads it as one pass into df and then GR
       GenomicRanges::makeGRangesFromDataFrame(overview.df.import, keep.extra.columns = TRUE,
                                               seqnames.field = "TFBS_chr",
@@ -61,6 +62,7 @@ get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NUL
       overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
       selected.cols.i <- !grepl(pattern=".*_log2fc",x=colnames(overview.df))
       overview.df.import <- overview.df[,selected.cols.i]
+      colnames(overview.df.import) <- str_replace(string = colnames(overview.df.import), pattern = "_footprints_bound", replacement = "_bound") %>% str_replace(pattern = "_footprints_score", replacement = "_score")
       GenomicRanges::makeGRangesFromDataFrame(overview.df.import, keep.extra.columns = TRUE,
                                               seqnames.field = "TFBS_chr",
                                               start.field = "TFBS_start",
@@ -70,6 +72,24 @@ get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NUL
     names(out_list) <- motif.res.folders
   }
   return(out_list)
+}
+
+combine.footprint.gr <- function(gr.list){
+  # Assumes identical motifs per each gr in gr.list
+  
+  all.motifs <- get.TF.motifs(gr.list[[1]])
+  h<-hash()
+  for (m in all.motifs){
+    for (g in gr.list){
+      if(!has.key(m,h)){
+        h[[m]]<-as.data.frame(g[[m]])
+      } else {
+        h[[m]]<-list(h[[m]],as.data.frame(g[[m]]))
+      }
+      
+    }
+  }
+  return(h)
 }
 
 
@@ -138,12 +158,14 @@ get.footprints <- function(tobias.gr, conditions, TF.motif, gr.filter=NULL, bina
     tob.sub <- tob.sub[tob.sub %over% gr.filter]
   }
   if (binary & length(tob.sub)>0){
-    bound.info <- elementMetadata(tob.sub)[,paste(conditions,"_bound",sep="")]
+    bound.info <- as.data.frame(elementMetadata(tob.sub)[,paste(conditions,"_bound",sep="")])
     out <- cbind(coordinate=GRangesToString(tob.sub), bound.info)
+    colnames(out) <- c("coordinate",paste(conditions,"_bound",sep=""))
     return(out)
   } else if (!binary & length(tob.sub)>0) {
-    bound.info <- elementMetadata(tob.sub)[,paste(conditions,"_score",sep="")]
+    bound.info <- as.data.frame(elementMetadata(tob.sub)[,paste(conditions,"_score",sep="")])
     out <- cbind(coordinate=GRangesToString(tob.sub), bound.info)
+    colnames(out) <- c("coordinate",paste(conditions,"_score",sep=""))
     return(out)
   } else {
     out <- as.data.frame(matrix(nrow=1, ncol=length(conditions), data = NA))
@@ -159,11 +181,22 @@ get.footprints <- function(tobias.gr, conditions, TF.motif, gr.filter=NULL, bina
 condence.footprints <- function(footprints.df, binary){
   if (binary){footprint.col.i <- str_detect(string = colnames(footprints.df), pattern = ".*_bound")} else {footprint.col.i <- str_detect(string = colnames(footprints.df), pattern = ".*_score")}
   if (binary & !any(is.na(footprints.df))){
-    tmp.1 <- apply(footprints.df[,footprint.col.i],2,sum)
-    tmp.1[tmp.1>0] <-1
+    if (is.null(dim(footprints.df[,footprint.col.i]))){
+      tmp.1 <- as.data.frame(sum(footprints.df[,footprint.col.i]))
+      colnames(tmp.1) <- colnames(footprints.df)[footprint.col.i]
+      tmp.1[tmp.1>0] <-1
+    } else {
+      tmp.1 <- apply(footprints.df[,footprint.col.i],2,sum)
+      tmp.1[tmp.1>0] <-1
+    }
     return(tmp.1)
   } else if (!binary & !any(is.na(footprints.df))) {
-    tmp.1 <- apply(footprints.df[,footprint.col.i],2,mean)
+    if (is.null(dim(footprints.df[,footprint.col.i]))){
+      tmp.1 <- mean(footprints.df[,footprint.col.i])
+      colnames(tmp.1) <- colnames(footprints.df)[footprint.col.i]
+    } else {
+      tmp.1 <- apply(footprints.df[,footprint.col.i],2,mean)
+    }
     return(tmp.1)
   } else {
     return(footprints.df[,footprint.col.i])
@@ -177,6 +210,7 @@ formFootprintMatrix.overConditions <- function(tobias.gr, conditions, gr.filter,
       tmp.footprints <- get.footprints(tobias.gr, conditions = conditions, TF.motif=m, gr.filter=gr.filter,binary=binary)
       unlist(condence.footprints(tmp.footprints,binary=binary))
     }))
+  colnames(out) <- conditions
   if (na.omit){out<- out[,apply(out,2,function(t){!all(is.na(t))})]}
   return(list(footprint.matrix=as.data.frame(out),feature=gr.filter))
 }
@@ -241,7 +275,7 @@ plotTFfootprint.heatmap <- function(footprint.matrix, filter.unbound=FALSE, with
   
   feat.accessibility.data.avg <- AverageExpression(Seurat.dataset, assays = "peaks", features = feature, group.by = "rv2.lineage")[[1]][,conditions]
   
-  footprint.matrix <- t(scale(t(footprint.matrix),scale=feat.accessibility.data.avg,center=FALSE))
+  #footprint.matrix <- t(scale(t(footprint.matrix),scale=feat.accessibility.data.avg,center=FALSE))
   # bin.mask <- footprint.matrix>quantile(footprint.matrix,.75)
   # footprint.matrix[bin.mask] <-1
   # footprint.matrix[!bin.mask] <-0
