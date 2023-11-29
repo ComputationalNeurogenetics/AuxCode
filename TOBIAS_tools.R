@@ -37,8 +37,8 @@ get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NUL
       # to convert the bed-file into a column-named data frame.
       # The Granges inherits the column names and thus is can be indexed by column names.
       overview.df <- data.frame(read.table(overview.file.path,header = TRUE))
-      selected.cols.i <- TRUE#!grepl(pattern=".*_log2fc",x=colnames(overview.df))
-      overview.df.import <- overview.df[,selected.cols.i]
+      #selected.cols.i <- TRUE#!grepl(pattern=".*_log2fc",x=colnames(overview.df))
+      overview.df.import <- overview.df#[,selected.cols.i]
       colnames(overview.df.import) <- str_replace(string = colnames(overview.df.import), pattern = "_footprints_bound", replacement = "_bound") %>% str_replace(pattern = "_footprints_score", replacement = "_score")
       # TODO: This could be significantly faster if one first catenates all files and reads it as one pass into df and then GR
       GenomicRanges::makeGRangesFromDataFrame(overview.df.import, keep.extra.columns = TRUE,
