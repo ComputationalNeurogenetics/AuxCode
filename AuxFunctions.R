@@ -1541,7 +1541,7 @@ findEChO <- function(EChO.matrix, span, foci, EChO.thr=120){
   return(list(EChO.true.i=EChO.true.i,coordinates=coordinates[EChO.true.i]))
 }
   
-plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.of.interest, rV2=TRUE){
+plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.of.interest, rV2=TRUE, drop.non.linked=FALSE){
   
   DefaultAssay(dataset) <- "peaks"
   peaks.data <- FetchData(dataset, vars = rownames(dataset))
@@ -1566,6 +1566,11 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   
   links.to.highlight <- Links(dataset)[Links(dataset) %over% f2.range & elementMetadata(Links(dataset))$pvalue < 0.01]
   links.to.highlight.peak.gr <- StringToGRanges(elementMetadata(links.to.highlight)$peak)
+  
+  if (drop.non.linked){
+    features.to.show.gr <- features.to.show.gr[features.to.show.gr %over% links.to.highlight.peak.gr]
+    features.to.show <- GRangesToString(features.to.show.gr)
+  }
  
   # Preparing covariate data
   id.to.plot <- convert_feature_identity(dataset, "RNA", covariate.genes.to.plot, "symbol")
@@ -1727,6 +1732,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
                  bottom_annotation = ha.bot.gl,
                  top_annotation = ha.top.gl,
                  left_annotation = ha_row_left,
+                 right_annotation = ha_row_right,
                  cluster_rows = F,
                  column_split = labels.gl,
                  cluster_columns = F,
