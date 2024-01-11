@@ -1708,6 +1708,8 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
                                  annotation_name_gp = grid::gpar(fontsize = 20),
                                  gp = grid::gpar(fontsize = 20))
   
+  col.p1 <- colorRamp2(breaks=c(seq(min(data.scaled.ga)+1,max(data.scaled.gl)+1,length.out=100)),colors=viridis::magma(100))
+
   p.1 <- Heatmap(t(data.scaled.ga) + 1,
                  show_column_names = F, 
                  show_row_names = F,
@@ -1719,12 +1721,15 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
                  column_split = labels.ga,
                  cluster_columns = F,
                  cluster_column_slices = F,
-                 col = viridis::magma(100),
+                 #col = viridis::magma(100),
+                 col=col.p1,
                  row_labels = paste(1:length(colnames(data.scaled.ga)), ".\nLength: ", row.anno, sep = ''),
                  use_raster = T,
                  column_names_gp = grid::gpar(fontsize = 20),
                  row_names_gp = grid::gpar(fontsize = 20),
                  column_title_gp = grid::gpar(fontsize = 20))
+  
+  col.p2 <- colorRamp2(breaks=c(seq(min(data.scaled.gl)+1,max(data.scaled.gl)+1,length.out=100)),colors=viridis::magma(100))
   
   p.2 <- Heatmap(t(data.scaled.gl) + 1,
                  show_column_names = F,
@@ -1737,7 +1742,7 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
                  column_split = labels.gl,
                  cluster_columns = F,
                  cluster_column_slices = F,
-                 col = viridis::magma(100),
+                 col = col.p2,
                  row_labels = paste(1:length(colnames(data.scaled.gl)), ".\nLength: ", row.anno, sep = ''),
                  use_raster = T,
                  column_names_gp = grid::gpar(fontsize = 20),
