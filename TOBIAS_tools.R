@@ -129,6 +129,44 @@ ConstructBed_TobiasGr <- function(gr,group,TF,file=TRUE, gr.only=FALSE){
 }
 
 
+newPlot<-function(gr,motif,cond1,cond2,dataset){
+  gr.i<- which(names(gr)==motif)
+  tmp.gr <- as_tibble(gr[[gr.i]]) %>% filter(name %in% c("protein_coding_promoter", "any_promoter"))
+  cond.name <- paste(cond1,"_",cond2,"_log2fc",sep="")
+  bound.name <- paste(cond1,"_bound",sep="")
+  
+  if (!cond.name %in% colnames(tmp.gr)){
+    cond1.tmp <- cond1
+    cond1 <- cond2
+    cond2 <- cond1.tmp
+    cond.name <- paste(cond1,"_",cond2,"_log2fc",sep="")
+    rev.comp <- TRUE
+  }
+  
+  fp.log2fc <- tmp.gr[,cond.name]
+  bound <- tmp.gr[,bound.name]
+  
+  # Calculate expression data fold change
+  DefaultAssay(dataset) <- "RNA"
+  RNA.fold <- FoldChange(object = dataset, ident.1 = cond1, ident.2 = cond2,assay="RNA") %>% rownames_to_column(var="gene_id") %>% as_tibble() %>% filter(pct.1 > 0.25 | pct.2 > 0.25) %>% filter(!is.na(avg_log2FC)) 
+  
+  tmp.gr<-inner_join(tmp.gr,RNA.fold)
+  
+  tb.to.plot <- select(tmp.gr,all_of(cond.name),all_of(bound.name),"avg_log2FC","gene_name") %>% filter(!if_any(everything(), is.na)) %>% arrange(desc(get({{cond.name}})))
+  
+  matrix.to.plot <- as.matrix(tb.to.plot[,1:3])
+  
+  col_fun.1 = colorRamp2(c(min(matrix.to.plot[,1]), mean(matrix.to.plot[,1]), max(matrix.to.plot[,1])), c("blue", "white", "red"))
+  h1 <- Heatmap(matrix.to.plot[,1], cluster_rows = FALSE, cluster_columns = FALSE, show_row_names = FALSE, col = col_fun.1)
+  
+  h2 <- Heatmap(matrix.to.plot[,2], cluster_rows = FALSE, cluster_columns = FALSE, show_row_names = FALSE, col=c("white","darkgreen"))
+  
+  col_fun.3 = colorRamp2(c(min(matrix.to.plot[,3]), mean(matrix.to.plot[,3]), max(matrix.to.plot[,3])), c("blue", "white", "red"))
+  h3 <- Heatmap(matrix.to.plot[,3], cluster_rows = FALSE, cluster_columns = FALSE, show_row_names = FALSE, col=col_fun.3)
+
+  h1 + h3 + h2
+}
+
 get.conditions <- function(tobias.gr){
   all.metadata <- lapply(tobias.gr,function(f){colnames(elementMetadata(f))})
   all.equal <- all(sapply(all.metadata, identical, all.metadata[[1]]))
@@ -178,6 +216,44 @@ get.footprints <- function(tobias.gr, conditions, TF.motif, gr.filter=NULL, bina
   }
 }
 
+get.fp.logfc <- function(tobias.gr, TF.motif, cond1, cond2, gr.filter){
+  require(plyranges)
+  tmp.gr <- tobias.gr[[TF.motif]] %>% plyranges::filter_by_overlaps(StringToGRanges(gr.filter))
+  tmp.gr.metadata.names <- colnames(elementMetadata(tmp.gr))
+  tmp.gr.metadata<-elementMetadata(tmp.gr)
+  #col.ni <- ifelse(any(tmp.gr.metadata.names==paste(cond1,cond2,"log2fc",sep="_")),which(tmp.gr.metadata.names==paste(cond1,cond2,"log2fc",sep="_")), which(tmp.gr.metadata.names==paste(cond2,cond1,"log2fc",sep="_")))
+  rev<-FALSE
+  if (any(tmp.gr.metadata.names==paste(cond1,cond2,"log2fc",sep="_"))){
+    col.ni <- which(tmp.gr.metadata.names==paste(cond1,cond2,"log2fc",sep="_"))
+  } else {
+    col.ni <- which(tmp.gr.metadata.names==paste(cond2,cond1,"log2fc",sep="_"))
+    rev <- TRUE
+  }
+  
+  tmp.out <- unlist(tmp.gr.metadata[col.ni])
+  
+  if (rev){
+    tmp.out<-tmp.out*-1
+  }
+  
+  if (length(tmp.out)>1){
+    return(log2(mean(2^tmp.out)))
+  } else {
+    return(tmp.out)
+    }
+}
+
+get.gene.exp.log2fc <- function(dataset, motif,cond1, cond2, group.by, H.metadata){
+  gene.id <- H.metadata$ensg_id[match(motif,H.metadata$name)]
+  TF.expression.data.avg <- AverageExpression(dataset, assays = "RNA", features = gene.id, group.by = group.by)[[1]][,c(cond1,cond2)]
+  
+  if (any(TF.expression.data.avg==0)){
+    return(NA)
+  } else {
+    return(log2(TF.expression.data.avg[1]/TF.expression.data.avg[2]))
+  }
+}
+
 condence.footprints <- function(footprints.df, binary){
   if (binary){footprint.col.i <- str_detect(string = colnames(footprints.df), pattern = ".*_bound")} else {footprint.col.i <- str_detect(string = colnames(footprints.df), pattern = ".*_score")}
   if (binary & !any(is.na(footprints.df))){
@@ -195,7 +271,7 @@ condence.footprints <- function(footprints.df, binary){
       tmp.1 <- mean(footprints.df[,footprint.col.i])
       colnames(tmp.1) <- colnames(footprints.df)[footprint.col.i]
     } else {
-      tmp.1 <- apply(footprints.df[,footprint.col.i],2,mean)
+      tmp.1 <- apply(footprints.df[,footprint.col.i],2,max)
     }
     return(tmp.1)
   } else {
@@ -209,8 +285,8 @@ formFootprintMatrix.overConditions <- function(tobias.gr, conditions, gr.filter,
   out<-as.data.frame(sapply(all.motifs, function(m){
       tmp.footprints <- get.footprints(tobias.gr, conditions = conditions, TF.motif=m, gr.filter=gr.filter,binary=binary)
       unlist(condence.footprints(tmp.footprints,binary=binary))
-    }))
-  colnames(out) <- conditions
+    })) 
+  rownames(out) <- conditions
   if (na.omit){out<- out[,apply(out,2,function(t){!all(is.na(t))})]}
   return(list(footprint.matrix=as.data.frame(out),feature=gr.filter))
 }
@@ -225,16 +301,36 @@ readHOCOMOCO.metadata <- function(path){
   return(x)
 }
 
+# getTF.gene_symbol <- function(TF.motif, HOCOMOCO.metadata, H.version="H12"){
+#   if (H.version=="H12"){gene_symbol <- dplyr::filter(HOCOMOCO.metadata, name %in% TF.motif) %>% pull(masterlist_info.species.MOUSE.gene_symbol)} else {gene_symbol <- dplyr::filter(HOCOMOCO.metadata, Model %in% TF.motif) %>% pull(`Transcription factor`)}
+#   return(gene_symbol)
+# }
+
 getTF.gene_symbol <- function(TF.motif, HOCOMOCO.metadata, H.version="H12"){
-  if (H.version=="H12"){gene_symbol <- dplyr::filter(HOCOMOCO.metadata, name %in% TF.motif) %>% pull(masterlist_info.species.MOUSE.gene_symbol)} else {gene_symbol <- dplyr::filter(HOCOMOCO.metadata, Model %in% TF.motif) %>% pull(`Transcription factor`)}
+  if (H.version=="H12"){
+    #gene_symbol <- dplyr::filter(HOCOMOCO.metadata, name %in% TF.motif) %>% pull(ensg_id)
+    tmp.ni <- match(TF.motif, HOCOMOCO.metadata$name)
+    gene_symbol <- HOCOMOCO.metadata$masterlist_info.species.MOUSE.gene_symbol[tmp.ni]
+  } #else {gene_symbol <- dplyr::filter(HOCOMOCO.metadata, Model %in% TF.motif) %>% pull(`Transcription factor`)}
   return(gene_symbol)
 }
 
+getTF.id <- function(TF.motif, HOCOMOCO.metadata, H.version="H12"){
+  if (H.version=="H12"){
+    #gene_symbol <- dplyr::filter(HOCOMOCO.metadata, name %in% TF.motif) %>% pull(ensg_id)
+    tmp.ni <- match(TF.motif, HOCOMOCO.metadata$name)
+    gene_id <- HOCOMOCO.metadata$ensg_id[tmp.ni]
+  } #else {gene_symbol <- dplyr::filter(HOCOMOCO.metadata, Model %in% TF.motif) %>% pull(`Transcription factor`)}
+  return(gene_id)
+}
 
-plotTFfootprint.heatmap <- function(footprint.matrix, filter.unbound=FALSE, with.expression=FALSE, filter.no.expressed.TF=FALSE, Seurat.dataset=NULL, HOCOMOCO.metadata=NULL, H.version="H12"){
+
+
+plotTFfootprint.heatmap <- function(footprint.matrix, filter.unbound=FALSE, with.expression=FALSE, filter.no.expressed.TF=FALSE, Seurat.dataset=NULL, HOCOMOCO.metadata=NULL, H.version="H12", group.by="rv2.lineage"){
   require(ComplexHeatmap)
   require(circlize)
   require(patchwork)
+  require(factoextra)
   
   feature <- footprint.matrix$feature
   footprint.matrix<-footprint.matrix$footprint.matrix
@@ -246,55 +342,161 @@ plotTFfootprint.heatmap <- function(footprint.matrix, filter.unbound=FALSE, with
 
   if (with.expression & !is.null(Seurat.dataset) & !is.null(HOCOMOCO.metadata)){
     TF.motif.names <- colnames(footprint.matrix)
-    TF.gene_symbols <- getTF.gene_symbol(TF.motif = TF.motif.names, HOCOMOCO.metadata = HOCOMOCO.metadata, H.version = H.version)
-    TF.ensg <- convert_feature_identity(Seurat.dataset, assay = "RNA", features = TF.gene_symbols, feature.format = "symbol")
- 
+    TF.ensg <- getTF.id(TF.motif = TF.motif.names, HOCOMOCO.metadata = HOCOMOCO.metadata, H.version = H.version)
+    
     DefaultAssay(Seurat.dataset) <- "RNA"
-    TF.expression.data.avg <- AverageExpression(Seurat.dataset, assays = "RNA", features = na.omit(TF.ensg), group.by = "rv2.lineage")[[1]][,conditions]
-    rownames(TF.expression.data.avg) <- convert_feature_identity(Seurat.dataset, assay = "RNA", features = rownames(TF.expression.data.avg), feature.format = "ens")
+    TF.expression.data.avg <- AverageExpression(Seurat.dataset, assays = "RNA", features = na.omit(TF.ensg), group.by = group.by)[[1]][,conditions]
+    # Repeat some TF expression to match motifs repeats
+    TF.expression.data.avg<-TF.expression.data.avg[TF.ensg,]
     
-    TF.i <- match(rownames(TF.expression.data.avg), TF.gene_symbols)
-    
-    footprint.matrix <- footprint.matrix[,TF.i]
-    
+    # Switch expression data to have motif names
+    rownames(TF.expression.data.avg) <- TF.motif.names
+
     # Filter non-expressed TFs
-    
     if (filter.no.expressed.TF){
       TF.i.2 <- rowMeans(TF.expression.data.avg)>quantile(TF.expression.data.avg, 0.5)
       footprint.matrix <- footprint.matrix[,TF.i.2]
       TF.expression.data.avg<-TF.expression.data.avg[TF.i.2,]
     }
-    TF.expression.data.avg<-t(scale(t(TF.expression.data.avg), center = FALSE))
-    color.func.exp <- colorRamp2(c(min(TF.expression.data.avg), mean(apply(TF.expression.data.avg,1,mean)), max(TF.expression.data.avg)), c("white", "steelblue", "red"))
+    # Drop genes having NA expression
+    TF.expression.data.avg.scaled<-t(scale(t(TF.expression.data.avg)))
+    #color.func.exp <- colorRamp2(c(min(TF.expression.data.avg.scaled), mean(apply(TF.expression.data.avg.scaled,1,mean)), max(TF.expression.data.avg.scaled)), c("white", "white", "red"))
+  }
+  
+  #feat.accessibility.data.avg <- AverageExpression(Seurat.dataset, assays = "peaks", features = feature, group.by = group.by)[[1]][,conditions]
+  
+  footprint.matrix.scaled <- scale(t(footprint.matrix))
+  
+  combined.matrix <- cbind(TF.expression.data.avg.scaled,footprint.matrix.scaled)
+
+  na.ni <- which(rowSums(is.na(combined.matrix))>0)
+  if (length(na.ni)>0){
+    combined.matrix<- combined.matrix[-na.ni,]
+  }
+  fviz_nbclust.res <- fviz_nbclust(combined.matrix, FUN=kmeans, method="silhouette")
+  opt.kmeans <-  which.max(fviz_nbclust.res$data$y)
+  
+  TF.split <- kmeans(combined.matrix,centers=opt.kmeans, iter.max = 100)
+  color.func.foot <- colorRamp2(c(min(combined.matrix), mean(apply(combined.matrix,2,mean)), max(combined.matrix)), c("blue", "white", "red"))
     
-    # Perform TF expression splitting
-    # TODO: Add iterative test to find number of centers?
-    #kmeans.centers <- matrix(nrow = 4, ncol = ncol(TF.expression.data.avg),byrow = TRUE,c(seq(max(TF.expression.data.avg),0,length.out=ncol(TF.expression.data.avg)),seq(0,max(TF.expression.data.avg),length.out=ncol(TF.expression.data.avg)),rep(0,ncol(TF.expression.data.avg)),rep(mean(TF.expression.data.avg),ncol(TF.expression.data.avg))))
-    TF.expression.mat.split <- kmeans(TF.expression.data.avg,centers=5, iter.max = 100)
-  }
+  p.foot.exp <- Heatmap(combined.matrix, cluster_columns = FALSE, cluster_rows = TRUE, row_names_gp = gpar(fontsize = 6), col = color.func.foot, split=TF.split$cluster, column_split = factor(c(rep("expression",5),rep("fp",5)), levels=c("expression","fp")), column_gap = unit(5, "mm"))
   
-  feat.accessibility.data.avg <- AverageExpression(Seurat.dataset, assays = "peaks", features = feature, group.by = "rv2.lineage")[[1]][,conditions]
-  
-  #footprint.matrix <- t(scale(t(footprint.matrix),scale=feat.accessibility.data.avg,center=FALSE))
-  # bin.mask <- footprint.matrix>quantile(footprint.matrix,.75)
-  # footprint.matrix[bin.mask] <-1
-  # footprint.matrix[!bin.mask] <-0
-  
-  column_ha = HeatmapAnnotation(avg.acc = anno_barplot(feat.accessibility.data.avg), col=list(avg.acc="darkgreen"))
-  
-  #foot.dist <- dist(t(footprint.matrix), method="euclidean")
-  #foot.hclust <- hclust(foot.dist, method = "complete")
-  
-  if (!any(footprint.matrix>0 & footprint.matrix<1)){color.func.foot <- c("white","darkgreen")} else {color.func.foot <- colorRamp2(c(min(footprint.matrix), median(apply(footprint.matrix,2,median)), max(footprint.matrix)), c("darkblue", "green", "yellow"))}
-  p.foot <- Heatmap(t(footprint.matrix), cluster_columns = FALSE, cluster_rows = TRUE, row_names_gp = gpar(fontsize = 6), col = color.func.foot, split=TF.expression.mat.split$cluster, top_annotation = column_ha)
-  
-  if (with.expression){
-    p.exp <- Heatmap(TF.expression.data.avg, cluster_columns = FALSE, cluster_rows = TRUE, row_names_gp = gpar(fontsize = 6), col = color.func.exp,split=TF.expression.mat.split$cluster)
-    p.final <- p.foot + p.exp + plot_layout(ncol=2)
-    return(p.final)
-  } else {
-    return(p.foot)
-  }
+  return(p.foot.exp)
+    
+  # column_ha = HeatmapAnnotation(avg.acc = anno_barplot(feat.accessibility.data.avg), col=list(avg.acc="darkgreen"))
+  # 
+  # #foot.dist <- dist(t(footprint.matrix), method="euclidean")
+  # #foot.hclust <- hclust(foot.dist, method = "complete")
+  # 
+  # if (!any(footprint.matrix>0 & footprint.matrix<1)){color.func.foot <- c("white","darkgreen")} else {color.func.foot <- colorRamp2(c(min(footprint.matrix.scaled), mean(apply(footprint.matrix.scaled,2,mean)), max(footprint.matrix.scaled)), c("white", "yellow", "darkgreen"))}
+  # p.foot <- Heatmap(footprint.matrix.scaled, cluster_columns = FALSE, cluster_rows = TRUE, row_names_gp = gpar(fontsize = 6), col = color.func.foot, split=TF.split$cluster, top_annotation = column_ha)
+  # 
+  # if (with.expression){
+  #   p.exp <- Heatmap(TF.expression.data.avg.scaled, cluster_columns = FALSE, cluster_rows = FALSE, row_names_gp = gpar(fontsize = 6), col = color.func.exp,split=TF.split$cluster)
+  #   p.final <- p.foot + p.exp + plot_layout(ncol=2)
+  #   return(p.final)
+  # } else {
+  #   return(p.foot)
+  # }
     
   
 }
+
+
+plotFootprintDotplot.rV2 <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset, H.metadata=H12.metadata, fp.pos.thr=1, fp.neg.thr=-1, exp.pos.thr=0.5, exp.neg.thr=-0.5, verbose=T, parallel=F, mc.cores=6){
+  # Arguments:
+  # tobias.fp.gr = TOBIAS dataobject a such from qs file
+  # gr.filter = string of genomic coordinates of interest chr-start-end
+  # TF.motifs = tibble with motif names and expression.class
+  # dataset = rV2 Seurat object with groups merged into rv2.lineage_re metadata variable
+  # H.metadata = Hocomoco metadata information from H12_metadata_mod.qs
+  # Could be optimized a lot by building everything in one loop over TFs, but makes no sense to do that now
+  
+  if (parallel){require(parallel)}
+  DefaultAssay(dataset) <- "RNA"
+  
+  # Preparing data
+  TF.motifs.rep <- paste(TF.motifs$TF.motif,TF.motifs$TF.motif,sep="_")
+  
+  if (verbose){print("Preparing data from PRO/CO transition")}
+  
+  if (parallel){
+    tmp.CO <- mclapply(TF.motifs.rep,function(tf){
+      get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="PRO1_2",cond2="CO1_2", gr.filter = gr.filter)
+      }, mc.cores=mc.cores)
+    names(tmp.CO) <- TF.motifs.rep
+    tmp.CO <- unlist(tmp.CO)
+  } else {
+    tmp.CO <- unlist(sapply(TF.motifs.rep,function(tf){get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="PRO1_2",cond2="CO1_2", gr.filter = gr.filter)}))
+  }
+  
+  CO.tb <- tibble(group="PRO/CO",motif=names(tmp.CO),fp.log2fc=tmp.CO)
+  CO.tb$motif <- str_remove(CO.tb$motif, pattern = "_.*")
+  CO.tb$TF.exp.log2fc <- sapply(CO.tb$motif,function(m){
+    get.gene.exp.log2fc(dataset=dataset, motif=m,cond1="PRO1_2",cond2="CO1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+  })
+  
+  if (verbose){print("Preparing data from CO/GA transition")}
+  
+  if (parallel){
+    tmp.GA <- mclapply(TF.motifs.rep,function(tf){
+      get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="CO1_2",cond2="GA1_2", gr.filter = gr.filter)
+    }, mc.cores=mc.cores)
+    names(tmp.GA) <- TF.motifs.rep
+    tmp.GA <- unlist(tmp.GA)
+  } else {
+    tmp.GA <- unlist(sapply(TF.motifs.rep,function(tf){get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="CO1_2",cond2="GA1_2", gr.filter = gr.filter)}))  
+    }
+  
+  GA.tb <- tibble(group="CO/GA",motif=names(tmp.GA),fp.log2fc=tmp.GA)
+  GA.tb$motif <- str_remove(GA.tb$motif, pattern = "_.*")
+  
+  GA.tb$TF.exp.log2fc <- sapply(GA.tb$motif,function(m){
+    get.gene.exp.log2fc(dataset=dataset, motif=m,cond1="CO1_2",cond2="GA1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+  })
+  
+  if (verbose){print("Preparing data from CO/GL transition")}
+  
+  if (parallel){
+    tmp.GL <- mclapply(TF.motifs.rep,function(tf){
+      get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="CO1_2",cond2="GL1_2", gr.filter = gr.filter)
+    }, mc.cores=mc.cores)
+    names(tmp.GL) <- TF.motifs.rep
+    tmp.GL <- unlist(tmp.GL)
+  } else {
+    tmp.GL <- unlist(sapply(TF.motifs.rep,function(tf){get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="CO1_2",cond2="GL1_2", gr.filter = gr.filter)}))
+    }
+  
+  GL.tb <- tibble(group="CO/GL",motif=names(tmp.GL),fp.log2fc=tmp.GL)
+  GL.tb$motif <- str_remove(GL.tb$motif, pattern = "_.*")
+  
+  GL.tb$TF.exp.log2fc <- sapply(GL.tb$motif,function(m){
+    get.gene.exp.log2fc(dataset=dataset, motif=m,cond1="CO1_2",cond2="GL1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+  })
+  
+  GA.GL.tb <- full_join(GA.tb,GL.tb)
+  GA.GL.CO.tb <- full_join(GA.GL.tb,CO.tb)
+  GA.GL.CO.tb$fp.log2fc <- GA.GL.CO.tb$fp.log2fc*-1
+  GA.GL.CO.tb<- left_join(GA.GL.CO.tb, TF.motifs, by=c("motif"="TF.motif"))
+  GA.GL.CO.tb$TF.exp.log2fc <- GA.GL.CO.tb$TF.exp.log2fc*-1
+  
+  if (verbose){print("Generating plot")}
+  
+  # Plotting
+  data.2.plot <- filter(GA.GL.CO.tb, (fp.log2fc > fp.pos.thr | fp.log2fc < fp.neg.thr) & (TF.exp.log2fc > exp.pos.thr | TF.exp.log2fc < exp.neg.thr) & !(expression.class=="Uncorrelated"))
+  data.2.plot$direction <- factor(x = ifelse(data.2.plot$fp.log2fc>0,"Positive","Negative"), levels=c("Positive","Negative"))
+  data.2.plot$group <- factor(data.2.plot$group, levels=c("PRO/CO","CO/GA","CO/GL"))
+  expression.class.color <- ifelse(data.2.plot$expression.class=="Correlated","forestgreen", "orange")
+  reorder.expression.class <- order(unique(data.2.plot %>% pull(motif)))
+  expression.class.color <- expression.class.color[reorder.expression.class]
+  #expression.class.color <- ifelse(data.2.plot %>% distinct(motif, expression.class) %>% arrange(desc(motif)) %>% pull(expression.class)=="Correlated","forestgreen", "orange")
+  
+  p.1 <- ggplot() + 
+    geom_point(aes(x = group, y=motif, size=abs(fp.log2fc), fill=TF.exp.log2fc, shape=direction,group=direction),filter(data.2.plot,group=="PRO/CO")) + scale_shape_manual(values=c(24,25)) +
+    geom_point(aes(x = group, y=motif, size=abs(fp.log2fc), fill=TF.exp.log2fc, shape=direction,group=direction),filter(data.2.plot,group=="CO/GA")) + scale_shape_manual(values=c(24,25)) +
+    geom_point(aes(x = group, y=motif, size=abs(fp.log2fc), fill=TF.exp.log2fc, shape=direction,group=direction),filter(data.2.plot,group=="CO/GL")) + scale_shape_manual(values=c(24,25)) +
+    theme_minimal() + scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint=0) + theme(axis.text.y = element_text(colour = expression.class.color)) + scale_x_discrete(drop = FALSE)
+  
+  return(p.1)
+}
+
