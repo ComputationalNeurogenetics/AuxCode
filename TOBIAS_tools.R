@@ -243,11 +243,11 @@ get.fp.logfc <- function(tobias.gr, TF.motif, cond1, cond2, gr.filter){
     }
 }
 
-get.gene.exp.log2fc <- function(dataset, motif,cond1, cond2, group.by, H.metadata){
+get.gene.exp.log2fc <- function(dataset, motif,cond1, cond2, group.by, H.metadata,min.exp=0.25){
   gene.id <- H.metadata$ensg_id[match(motif,H.metadata$name)]
-  TF.expression.data.avg <- AverageExpression(dataset, assays = "RNA", features = gene.id, group.by = group.by)[[1]][,c(cond1,cond2)]
-  
-  if (any(TF.expression.data.avg==0)){
+  TF.expression.data.avg <- exp(AverageExpression(dataset, assays = "RNA", features = gene.id, group.by = group.by)[[1]][,c(cond1,cond2)])
+  tmp.gene.stats <- quantile(dataset@assays$RNA@data[gene.id,],min.exp)
+  if (any(TF.expression.data.avg==0) | all(TF.expression.data.avg<tmp.gene.stats)){
     return(NA)
   } else {
     return(log2(TF.expression.data.avg[1]/TF.expression.data.avg[2]))
@@ -403,7 +403,7 @@ plotTFfootprint.heatmap <- function(footprint.matrix, filter.unbound=FALSE, with
 }
 
 
-plotFootprintDotplot.rV2 <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset, H.metadata=H12.metadata, fp.pos.thr=1, fp.neg.thr=-1, exp.pos.thr=0.5, exp.neg.thr=-0.5, verbose=T, parallel=F, mc.cores=6){
+plotFootprintDotplot.rV2 <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset, H.metadata=H12.metadata, fp.pos.thr=1, fp.neg.thr=-1, exp.pos.thr=0.5, exp.neg.thr=-0.5, min.exp=.1, verbose=T, parallel=F, mc.cores=6){
   # Arguments:
   # tobias.fp.gr = TOBIAS dataobject a such from qs file
   # gr.filter = string of genomic coordinates of interest chr-start-end
@@ -486,16 +486,15 @@ plotFootprintDotplot.rV2 <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset
   data.2.plot <- filter(GA.GL.CO.tb, (fp.log2fc > fp.pos.thr | fp.log2fc < fp.neg.thr) & (TF.exp.log2fc > exp.pos.thr | TF.exp.log2fc < exp.neg.thr) & !(expression.class=="Uncorrelated"))
   data.2.plot$direction <- factor(x = ifelse(data.2.plot$fp.log2fc>0,"Positive","Negative"), levels=c("Positive","Negative"))
   data.2.plot$group <- factor(data.2.plot$group, levels=c("PRO/CO","CO/GA","CO/GL"))
-  expression.class.color <- ifelse(data.2.plot$expression.class=="Correlated","forestgreen", "orange")
-  reorder.expression.class <- order(unique(data.2.plot %>% pull(motif)))
-  expression.class.color <- expression.class.color[reorder.expression.class]
-  #expression.class.color <- ifelse(data.2.plot %>% distinct(motif, expression.class) %>% arrange(desc(motif)) %>% pull(expression.class)=="Correlated","forestgreen", "orange")
-  
-  p.1 <- ggplot() + 
-    geom_point(aes(x = group, y=motif, size=abs(fp.log2fc), fill=TF.exp.log2fc, shape=direction,group=direction),filter(data.2.plot,group=="PRO/CO")) + scale_shape_manual(values=c(24,25)) +
-    geom_point(aes(x = group, y=motif, size=abs(fp.log2fc), fill=TF.exp.log2fc, shape=direction,group=direction),filter(data.2.plot,group=="CO/GA")) + scale_shape_manual(values=c(24,25)) +
-    geom_point(aes(x = group, y=motif, size=abs(fp.log2fc), fill=TF.exp.log2fc, shape=direction,group=direction),filter(data.2.plot,group=="CO/GL")) + scale_shape_manual(values=c(24,25)) +
-    theme_minimal() + scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint=0) + theme(axis.text.y = element_text(colour = expression.class.color)) + scale_x_discrete(drop = FALSE)
+  data.2.plot$motif.with.class <- ifelse(data.2.plot$expression.class=="Correlated",paste(data.2.plot$motif,"(C)",sep=" "), paste(data.2.plot$motif,"(S)",sep=" "))
+
+    p.1 <- ggplot() + 
+    geom_point(aes(x = group, y=motif.with.class, size=abs(fp.log2fc), fill=TF.exp.log2fc, shape=direction,group=direction),filter(data.2.plot,group=="PRO/CO")) + scale_shape_manual(values=c(24,25)) +
+    geom_point(aes(x = group, y=motif.with.class, size=abs(fp.log2fc), fill=TF.exp.log2fc, shape=direction,group=direction),filter(data.2.plot,group=="CO/GA")) + scale_shape_manual(values=c(24,25)) +
+    geom_point(aes(x = group, y=motif.with.class, size=abs(fp.log2fc), fill=TF.exp.log2fc, shape=direction,group=direction),filter(data.2.plot,group=="CO/GL")) + scale_shape_manual(values=c(24,25)) +
+    theme_minimal() + scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint=0) + scale_x_discrete(drop = FALSE) + scale_shape_manual(name = "FP change",
+                                                                                                                                               labels = c("Positive", "Negative"),
+                                                                                                                                               values = c(24,25))
   
   return(p.1)
 }
