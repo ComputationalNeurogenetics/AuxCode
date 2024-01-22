@@ -1,5 +1,6 @@
 # Some additional functions ----
 
+
 gene_set_prepare2 <- function(path_to_db_file, cell_type){
   
   cell_markers = openxlsx::read.xlsx(path_to_db_file)
