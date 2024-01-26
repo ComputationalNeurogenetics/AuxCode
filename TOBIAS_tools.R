@@ -221,7 +221,6 @@ get.fp.logfc <- function(tobias.gr, TF.motif, cond1, cond2, gr.filter){
   tmp.gr <- tobias.gr[[TF.motif]] %>% plyranges::filter_by_overlaps(StringToGRanges(gr.filter))
   tmp.gr.metadata.names <- colnames(elementMetadata(tmp.gr))
   tmp.gr.metadata<-elementMetadata(tmp.gr)
-  #col.ni <- ifelse(any(tmp.gr.metadata.names==paste(cond1,cond2,"log2fc",sep="_")),which(tmp.gr.metadata.names==paste(cond1,cond2,"log2fc",sep="_")), which(tmp.gr.metadata.names==paste(cond2,cond1,"log2fc",sep="_")))
   rev<-FALSE
   if (any(tmp.gr.metadata.names==paste(cond1,cond2,"log2fc",sep="_"))){
     col.ni <- which(tmp.gr.metadata.names==paste(cond1,cond2,"log2fc",sep="_"))
@@ -232,7 +231,7 @@ get.fp.logfc <- function(tobias.gr, TF.motif, cond1, cond2, gr.filter){
   
   tmp.out <- unlist(tmp.gr.metadata[col.ni])
   
-  if (rev){
+  if (!rev){
     tmp.out<-tmp.out*-1
   }
   
@@ -251,6 +250,18 @@ get.gene.exp.log2fc <- function(dataset, motif,cond1, cond2, group.by, H.metadat
     return(NA)
   } else {
     return(log2(TF.expression.data.avg[1]/TF.expression.data.avg[2]))
+  }
+}
+
+
+get.gene.exp <- function(dataset, motif,conditions,group.by, H.metadata,min.exp=0.25){
+  gene.id <- H.metadata$ensg_id[match(motif,H.metadata$name)]
+  TF.expression.data.avg <- exp(AverageExpression(dataset, assays = "RNA", features = gene.id, group.by = group.by)[[1]][,conditions])
+  tmp.gene.stats <- quantile(dataset@assays$RNA@data[gene.id,],min.exp)
+  if (any(TF.expression.data.avg==0) | all(TF.expression.data.avg<tmp.gene.stats)){
+    return(NA)
+  } else {
+    return(mean(TF.expression.data.avg,na.rm=T))
   }
 }
 
@@ -403,7 +414,7 @@ plotTFfootprint.heatmap <- function(footprint.matrix, filter.unbound=FALSE, with
 }
 
 
-plotFootprintDotplot.rV2 <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset, H.metadata=H12.metadata, fp.pos.thr=1, fp.neg.thr=-1, exp.pos.thr=0.5, exp.neg.thr=-0.5, min.exp=.1, verbose=T, parallel=F, mc.cores=6){
+plotFootprintDotplot.rV2.comp <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset, H.metadata=H12.metadata, fp.pos.thr=1, fp.neg.thr=-1, exp.pos.thr=0.5, exp.neg.thr=-0.5, min.exp=.1, verbose=T, mc.cores=9){
   # Arguments:
   # tobias.fp.gr = TOBIAS dataobject a such from qs file
   # gr.filter = string of genomic coordinates of interest chr-start-end
@@ -412,7 +423,7 @@ plotFootprintDotplot.rV2 <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset
   # H.metadata = Hocomoco metadata information from H12_metadata_mod.qs
   # Could be optimized a lot by building everything in one loop over TFs, but makes no sense to do that now
   
-  if (parallel){require(parallel)}
+  require(parallel)
   DefaultAssay(dataset) <- "RNA"
   
   # Preparing data
@@ -420,63 +431,54 @@ plotFootprintDotplot.rV2 <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset
   
   if (verbose){print("Preparing data from PRO/CO transition")}
   
-  if (parallel){
-    tmp.CO <- mclapply(TF.motifs.rep,function(tf){
-      get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="PRO1_2",cond2="CO1_2", gr.filter = gr.filter)
-      }, mc.cores=mc.cores)
-    names(tmp.CO) <- TF.motifs.rep
-    tmp.CO <- unlist(tmp.CO)
-  } else {
-    tmp.CO <- unlist(sapply(TF.motifs.rep,function(tf){get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="PRO1_2",cond2="CO1_2", gr.filter = gr.filter)}))
-  }
-  
+  tmp.CO <- mclapply(TF.motifs.rep,function(tf){
+    get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="PRO1_2",cond2="CO1_2", gr.filter = gr.filter)
+    }, mc.cores=mc.cores)
+  names(tmp.CO) <- TF.motifs.rep
+  tmp.CO <- unlist(tmp.CO)
+
   CO.tb <- tibble(group="PRO/CO",motif=names(tmp.CO),fp.log2fc=tmp.CO)
   CO.tb$motif <- str_remove(CO.tb$motif, pattern = "_.*")
-  CO.tb$TF.exp.log2fc <- sapply(CO.tb$motif,function(m){
+  CO.tb$TF.exp.log2fc <- unlist(mclapply(CO.tb$motif,function(m){
     get.gene.exp.log2fc(dataset=dataset, motif=m,cond1="PRO1_2",cond2="CO1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-  })
+  },mc.cores=mc.cores))
+
   
   if (verbose){print("Preparing data from CO/GA transition")}
   
-  if (parallel){
-    tmp.GA <- mclapply(TF.motifs.rep,function(tf){
-      get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="CO1_2",cond2="GA1_2", gr.filter = gr.filter)
-    }, mc.cores=mc.cores)
-    names(tmp.GA) <- TF.motifs.rep
-    tmp.GA <- unlist(tmp.GA)
-  } else {
-    tmp.GA <- unlist(sapply(TF.motifs.rep,function(tf){get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="CO1_2",cond2="GA1_2", gr.filter = gr.filter)}))  
-    }
-  
+  tmp.GA <- mclapply(TF.motifs.rep,function(tf){
+    get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="CO1_2",cond2="GA1_2", gr.filter = gr.filter)
+  }, mc.cores=mc.cores)
+  names(tmp.GA) <- TF.motifs.rep
+  tmp.GA <- unlist(tmp.GA)
+
   GA.tb <- tibble(group="CO/GA",motif=names(tmp.GA),fp.log2fc=tmp.GA)
   GA.tb$motif <- str_remove(GA.tb$motif, pattern = "_.*")
-  
-  GA.tb$TF.exp.log2fc <- sapply(GA.tb$motif,function(m){
+  GA.tb$TF.exp.log2fc <- unlist(mclapply(GA.tb$motif,function(m){
     get.gene.exp.log2fc(dataset=dataset, motif=m,cond1="CO1_2",cond2="GA1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-  })
+  },mc.cores=mc.cores))
+
   
   if (verbose){print("Preparing data from CO/GL transition")}
   
-  if (parallel){
-    tmp.GL <- mclapply(TF.motifs.rep,function(tf){
-      get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="CO1_2",cond2="GL1_2", gr.filter = gr.filter)
-    }, mc.cores=mc.cores)
-    names(tmp.GL) <- TF.motifs.rep
-    tmp.GL <- unlist(tmp.GL)
-  } else {
-    tmp.GL <- unlist(sapply(TF.motifs.rep,function(tf){get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="CO1_2",cond2="GL1_2", gr.filter = gr.filter)}))
-    }
-  
+  tmp.GL <- mclapply(TF.motifs.rep,function(tf){
+    get.fp.logfc(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, cond1="CO1_2",cond2="GL1_2", gr.filter = gr.filter)
+  }, mc.cores=mc.cores)
+  names(tmp.GL) <- TF.motifs.rep
+  tmp.GL <- unlist(tmp.GL)
+
   GL.tb <- tibble(group="CO/GL",motif=names(tmp.GL),fp.log2fc=tmp.GL)
   GL.tb$motif <- str_remove(GL.tb$motif, pattern = "_.*")
   
-  GL.tb$TF.exp.log2fc <- sapply(GL.tb$motif,function(m){
+  GL.tb$TF.exp.log2fc <- unlist(mclapply(GL.tb$motif,function(m){
     get.gene.exp.log2fc(dataset=dataset, motif=m,cond1="CO1_2",cond2="GL1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-  })
-  
+  },mc.cores=mc.cores))
+
   GA.GL.tb <- full_join(GA.tb,GL.tb)
   GA.GL.CO.tb <- full_join(GA.GL.tb,CO.tb)
-  GA.GL.CO.tb$fp.log2fc <- GA.GL.CO.tb$fp.log2fc*-1
+  
+  # GA.GL.CO.tb$fp.log2fc <- GA.GL.CO.tb$fp.log2fc*-1
+  
   GA.GL.CO.tb<- left_join(GA.GL.CO.tb, TF.motifs, by=c("motif"="TF.motif"))
   GA.GL.CO.tb$TF.exp.log2fc <- GA.GL.CO.tb$TF.exp.log2fc*-1
   
@@ -495,6 +497,169 @@ plotFootprintDotplot.rV2 <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset
     theme_minimal() + scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint=0) + scale_x_discrete(drop = FALSE) + scale_shape_manual(name = "FP change",
                                                                                                                                                labels = c("Positive", "Negative"),
                                                                                                                                                values = c(24,25))
+  
+  return(p.1)
+}
+
+plotFootprintDotplot.rV2.noncomp <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset, H.metadata=H12.metadata, verbose=T, parallel=F, mc.cores=6){
+  # Arguments:
+  # tobias.fp.gr = TOBIAS dataobject a such from qs file
+  # gr.filter = string of genomic coordinates of interest chr-start-end
+  # TF.motifs = tibble with motif names and expression.class
+  # dataset = rV2 Seurat object with groups merged into rv2.lineage_re metadata variable
+  # H.metadata = Hocomoco metadata information from H12_metadata_mod.qs
+  # Could be optimized a lot by building everything in one loop over TFs, but makes no sense to do that now
+  
+  if (parallel){require(parallel)}
+  DefaultAssay(dataset) <- "RNA"
+  
+  # Preparing data
+  TF.motifs.rep <- paste(TF.motifs$TF.motif,TF.motifs$TF.motif,sep="_")
+  
+  
+  if (verbose){print("Preparing data for PRO")}
+  
+  if (parallel){
+    tmp.PRO <- mclapply(TF.motifs.rep,function(tf){
+      tmp.scores <- get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="PRO1_2", gr.filter = gr.filter, binary = FALSE)
+      if (ncol(tmp.scores)==2){
+        return(mean(tmp.scores[,2]))
+      } else {
+        return(NA)
+      }
+    }, mc.cores=mc.cores)
+    names(tmp.PRO) <- TF.motifs.rep
+    tmp.PRO <- unlist(tmp.PRO)
+  } else {
+    tmp.PRO <- unlist(sapply(TF.motifs.rep,function(tf){get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="PRO1_2", gr.filter = gr.filter, binary = FALSE)}))
+  }
+  
+  PRO.tb <- tibble(group="PRO1_2",motif=names(tmp.PRO),fp=tmp.PRO)
+  PRO.tb$motif <- str_remove(PRO.tb$motif, pattern = "_.*")
+  if (parallel){
+    PRO.tb$TF.exp <- unlist(mclapply(PRO.tb$motif,function(m){
+      get.gene.exp(dataset=dataset, motif=m,conditions="PRO1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+    }, mc.cores = mc.cores))
+  } else {
+    PRO.tb$TF.exp <- sapply(PRO.tb$motif,function(m){
+      get.gene.exp(dataset=dataset, motif=m,conditions="PRO1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+    })
+  }
+  
+  
+  
+  if (verbose){print("Preparing data for CO")}
+  
+  if (parallel){
+    tmp.CO <- mclapply(TF.motifs.rep,function(tf){
+      tmp.scores <- get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="CO1_2", gr.filter = gr.filter, binary = FALSE)
+      if (ncol(tmp.scores)==2){
+        return(mean(tmp.scores[,2]))
+      } else {
+        return(NA)
+      }
+    }, mc.cores=mc.cores)
+    names(tmp.CO) <- TF.motifs.rep
+    tmp.CO <- unlist(tmp.CO)
+  } else {
+    tmp.CO <- unlist(sapply(TF.motifs.rep,function(tf){get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="CO1_2", gr.filter = gr.filter, binary = FALSE)}))
+  }
+  
+  CO.tb <- tibble(group="CO1_2",motif=names(tmp.CO),fp=tmp.CO)
+  CO.tb$motif <- str_remove(CO.tb$motif, pattern = "_.*")
+  if (parallel){
+    CO.tb$TF.exp <- unlist(mclapply(CO.tb$motif,function(m){
+      get.gene.exp(dataset=dataset, motif=m,conditions="CO1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+    }, mc.cores = mc.cores))
+  } else {
+    CO.tb$TF.exp <- sapply(CO.tb$motif,function(m){
+      get.gene.exp(dataset=dataset, motif=m,conditions="CO1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+    })
+  }
+  
+  
+  
+  if (verbose){print("Preparing data for GA")}
+  
+  if (parallel){
+    tmp.GA <- mclapply(TF.motifs.rep,function(tf){
+      tmp.scores <- get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="GA1_2", gr.filter = gr.filter, binary = FALSE)
+      if (ncol(tmp.scores)==2){
+        return(mean(tmp.scores[,2]))
+      } else {
+        return(NA)
+      }
+    }, mc.cores=mc.cores)
+    names(tmp.GA) <- TF.motifs.rep
+    tmp.GA <- unlist(tmp.GA)
+  } else {
+    tmp.GA <- unlist(sapply(TF.motifs.rep,function(tf){get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="GA1_2", gr.filter = gr.filter, binary = FALSE)}))
+  }
+  
+  GA.tb <- tibble(group="GA1_2",motif=names(tmp.GA),fp=tmp.GA)
+  GA.tb$motif <- str_remove(GA.tb$motif, pattern = "_.*")
+  if (parallel){
+    GA.tb$TF.exp <- unlist(mclapply(GA.tb$motif,function(m){
+      get.gene.exp(dataset=dataset, motif=m,conditions="GA1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+    }, mc.cores = mc.cores))
+  } else {
+    GA.tb$TF.exp <- sapply(GA.tb$motif,function(m){
+      get.gene.exp(dataset=dataset, motif=m,conditions="GA1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+    })
+  }
+  
+  
+  if (verbose){print("Preparing data for GL")}
+  
+  if (parallel){
+    tmp.GL <- mclapply(TF.motifs.rep,function(tf){
+      tmp.scores <- get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="GL1_2", gr.filter = gr.filter, binary = FALSE)
+      if (ncol(tmp.scores)==2){
+        return(mean(tmp.scores[,2]))
+      } else {
+        return(NA)
+      }
+    }, mc.cores=mc.cores)
+    names(tmp.GL) <- TF.motifs.rep
+    tmp.GL <- unlist(tmp.GL)
+  } else {
+    tmp.GL <- unlist(sapply(TF.motifs.rep,function(tf){get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="GL1_2", gr.filter = gr.filter, binary = FALSE)}))
+  }
+  
+  GL.tb <- tibble(group="GL1_2",motif=names(tmp.GL),fp=tmp.GL)
+  GL.tb$motif <- str_remove(GL.tb$motif, pattern = "_.*")
+  if (parallel){
+    GL.tb$TF.exp <- unlist(mclapply(GL.tb$motif,function(m){
+      get.gene.exp(dataset=dataset, motif=m,conditions="GL1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+    }, mc.cores = mc.cores))
+  } else {
+    GL.tb$TF.exp <- sapply(GL.tb$motif,function(m){
+      get.gene.exp(dataset=dataset, motif=m,conditions="GL1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
+    })
+  }
+
+  dotplot.data <- full_join(PRO.tb,CO.tb)
+  dotplot.data <- full_join(dotplot.data,GA.tb)
+  dotplot.data <- full_join(dotplot.data,GL.tb)
+  dotplot.data<- left_join(dotplot.data, TF.motifs, by=c("motif"="TF.motif"))
+  
+  if (verbose){print("Generating plot")}
+  
+  # Plotting
+  
+  exp.thr <- quantile(dotplot.data$TF.exp,.25)
+  fp.thr <- quantile(dotplot.data$fp,.25,na.rm=T)
+    
+  data.2.plot <- filter(dotplot.data, !(expression.class=="Uncorrelated") & !is.na(TF.exp) & !is.na(fp) & TF.exp>exp.thr & fp>fp.thr)
+  data.2.plot$group <- factor(data.2.plot$group, levels=c("PRO1_2","CO1_2","GA1_2","GL1_2"))
+  data.2.plot$motif.with.class <- ifelse(data.2.plot$expression.class=="Correlated",paste(data.2.plot$motif,"(C)",sep=" "), paste(data.2.plot$motif,"(S)",sep=" "))
+  
+  p.1 <- ggplot() + 
+    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=log2(TF.exp)),filter(data.2.plot,group=="PRO1_2"), shape=21) +
+    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=log2(TF.exp)),filter(data.2.plot,group=="CO1_2"), shape=21)  +
+    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=log2(TF.exp)),filter(data.2.plot,group=="GA1_2"), shape=21) + 
+    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=log2(TF.exp)),filter(data.2.plot,group=="GL1_2"), shape=21) + 
+    theme_minimal() + scale_fill_gradient(low="blue",high="red") + scale_x_discrete(drop = FALSE)
   
   return(p.1)
 }
