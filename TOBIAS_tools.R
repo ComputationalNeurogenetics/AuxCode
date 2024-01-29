@@ -254,11 +254,12 @@ get.gene.exp.log2fc <- function(dataset, motif,cond1, cond2, group.by, H.metadat
 }
 
 
-get.gene.exp <- function(dataset, motif,conditions,group.by, H.metadata,min.exp=0.25){
+get.gene.exp <- function(dataset, motif,conditions,group.by, H.metadata){
   gene.id <- H.metadata$ensg_id[match(motif,H.metadata$name)]
-  TF.expression.data.avg <- exp(AverageExpression(dataset, assays = "RNA", features = gene.id, group.by = group.by)[[1]][,conditions])
-  tmp.gene.stats <- quantile(dataset@assays$RNA@data[gene.id,],min.exp)
-  if (any(TF.expression.data.avg==0) | all(TF.expression.data.avg<tmp.gene.stats)){
+  TF.expression.data.avg <- AverageExpression(dataset, assays = "RNA", features = gene.id, group.by = group.by)[[1]][,conditions]
+  #tmp.gene.stats <- quantile(dataset@assays$RNA@data[gene.id,],min.exp)
+  #  all(TF.expression.data.avg<tmp.gene.stats)){
+  if (all(TF.expression.data.avg==0)){ 
     return(NA)
   } else {
     return(mean(TF.expression.data.avg,na.rm=T))
@@ -643,24 +644,36 @@ plotFootprintDotplot.rV2.noncomp <- function(tobias.fp.gr, gr.filter, TF.motifs,
   dotplot.data <- full_join(dotplot.data,GL.tb)
   dotplot.data<- left_join(dotplot.data, TF.motifs, by=c("motif"="TF.motif"))
   
+  exp.thr <- mean(dotplot.data$TF.exp,na.rm=T)
+  fp.thr <- quantile(dotplot.data$fp,na.rm=T, .15)
+  dotplot.data$fp[is.na(dotplot.data$fp)] <- 0
+  
+  TF.exp.filt.li <- dotplot.data %>% group_by(motif) %>% summarise(TF.filt=any(TF.exp>exp.thr))
+  TF.fp.filt.li <- dotplot.data %>% group_by(motif) %>% summarise(TF.fp=any(fp>fp.thr))
+  
+  dotplot.data <- left_join(dotplot.data,TF.exp.filt.li)
+  dotplot.data <- left_join(dotplot.data, TF.fp.filt.li)
+  
+  dotplot.data$fp[dotplot.data$fp<fp.thr] <- NA
+  zero.epression.li <- dotplot.data$TF.exp<exp.thr
+  dotplot.data$TF.exp<-log10(dotplot.data$TF.exp)
+  dotplot.data$TF.exp[zero.epression.li] <- NA
+  
+  
   if (verbose){print("Generating plot")}
   
   # Plotting
-  
-  exp.thr <- quantile(dotplot.data$TF.exp,.25)
-  fp.thr <- quantile(dotplot.data$fp,.25,na.rm=T)
-    
-  data.2.plot <- filter(dotplot.data, !(expression.class=="Uncorrelated") & !is.na(TF.exp) & !is.na(fp) & TF.exp>exp.thr & fp>fp.thr)
+  data.2.plot <- filter(dotplot.data,!(expression.class=="Uncorrelated") & TF.filt & TF.fp)
   data.2.plot$group <- factor(data.2.plot$group, levels=c("PRO1_2","CO1_2","GA1_2","GL1_2"))
   data.2.plot$motif.with.class <- ifelse(data.2.plot$expression.class=="Correlated",paste(data.2.plot$motif,"(C)",sep=" "), paste(data.2.plot$motif,"(S)",sep=" "))
   
   p.1 <- ggplot() + 
-    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=log2(TF.exp)),filter(data.2.plot,group=="PRO1_2"), shape=21) +
-    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=log2(TF.exp)),filter(data.2.plot,group=="CO1_2"), shape=21)  +
-    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=log2(TF.exp)),filter(data.2.plot,group=="GA1_2"), shape=21) + 
-    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=log2(TF.exp)),filter(data.2.plot,group=="GL1_2"), shape=21) + 
-    theme_minimal() + scale_fill_gradient(low="blue",high="red") + scale_x_discrete(drop = FALSE)
+    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=TF.exp),filter(data.2.plot,group=="PRO1_2"), shape=21) +
+    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=TF.exp),filter(data.2.plot,group=="CO1_2"), shape=21)  +
+    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=TF.exp),filter(data.2.plot,group=="GA1_2"), shape=21) + 
+    geom_point(aes(x = group, y=motif.with.class, size=fp, fill=TF.exp),filter(data.2.plot,group=="GL1_2"), shape=21) + 
+    theme_minimal() + scale_fill_gradient(low="white",high="darkred") + scale_x_discrete(drop = FALSE)
   
-  return(p.1)
+  return(list(plot=p.1,data2plot=data.2.plot))
 }
 
