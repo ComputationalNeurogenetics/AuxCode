@@ -502,7 +502,43 @@ plotFootprintDotplot.rV2.comp <- function(tobias.fp.gr, gr.filter, TF.motifs, da
   return(p.1)
 }
 
-plotFootprintDotplot.rV2.noncomp <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset, H.metadata=H12.metadata, verbose=T, parallel=F, mc.cores=6){
+
+fetchDotPlotData <- function(tobias.gr, TF.motifs, conditions, gr.filter, cons.gr, dataset, mc.cores){
+  require(parallel)
+  tmp.1 <- mclapply(TF.motifs,function(tf){
+    tmp.scores <- get.footprints(tobias.gr = tobias.gr, TF.motif = tf, conditions=conditions, gr.filter = gr.filter, binary = FALSE)
+    if (ncol(tmp.scores)==2){
+      if (!is.null(cons.gr)){
+        tmp.mean.cons <- mean(filter_by_overlaps(cons.gr,StringToGRanges(tmp.scores[,1]))$score, na.rm=T)
+        return(c("fp.mean"=mean(tmp.scores[,2]), "cons.mean"=tmp.mean.cons))
+      } else {
+        return(mean(tmp.scores[,2]))
+      }
+    } else {
+      return(NA)
+    }
+  }, mc.cores=mc.cores)
+  names(tmp.1) <- TF.motifs
+  
+  if (is.null(cons.gr)){
+    tmp.1 <- unlist(tmp.1)
+    tmp.2 <- tibble(group=conditions,motif=names(tmp.1),fp=tmp.1)
+  } else {
+    tmp.2 <- as.data.frame(t(as_tibble(tmp.1))) %>% rownames_to_column("motif")
+    colnames(tmp.2) <- c("motif","fp","cons")
+    tmp.2$group <- conditions
+  }
+  
+  tmp.2$motif <- str_remove(tmp.2$motif, pattern = "_.*")
+  
+  tmp.2$TF.exp <- unlist(mclapply(tmp.2$motif,function(m){
+    get.gene.exp(dataset=dataset, motif=m,conditions=conditions,group.by = "rv2.lineage_re", H.metadata = H.metadata)
+  }, mc.cores = mc.cores))
+  
+  return(tmp.2)
+}
+
+plotFootprintDotplot.rV2.noncomp <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset, H.metadata=H12.metadata, verbose=F, mc.cores=6, cons.gr=NULL){
   # Arguments:
   # tobias.fp.gr = TOBIAS dataobject a such from qs file
   # gr.filter = string of genomic coordinates of interest chr-start-end
@@ -511,137 +547,30 @@ plotFootprintDotplot.rV2.noncomp <- function(tobias.fp.gr, gr.filter, TF.motifs,
   # H.metadata = Hocomoco metadata information from H12_metadata_mod.qs
   # Could be optimized a lot by building everything in one loop over TFs, but makes no sense to do that now
   
-  if (parallel){require(parallel)}
   DefaultAssay(dataset) <- "RNA"
+  
+  if (!is.null(cons.gr)){
+    cons.subset <- filter_by_overlaps(cons.gr,StringToGRanges(gr.filter))
+    }
   
   # Preparing data
   TF.motifs.rep <- paste(TF.motifs$TF.motif,TF.motifs$TF.motif,sep="_")
   
-  
   if (verbose){print("Preparing data for PRO")}
-  
-  if (parallel){
-    tmp.PRO <- mclapply(TF.motifs.rep,function(tf){
-      tmp.scores <- get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="PRO1_2", gr.filter = gr.filter, binary = FALSE)
-      if (ncol(tmp.scores)==2){
-        return(mean(tmp.scores[,2]))
-      } else {
-        return(NA)
-      }
-    }, mc.cores=mc.cores)
-    names(tmp.PRO) <- TF.motifs.rep
-    tmp.PRO <- unlist(tmp.PRO)
-  } else {
-    tmp.PRO <- unlist(sapply(TF.motifs.rep,function(tf){get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="PRO1_2", gr.filter = gr.filter, binary = FALSE)}))
-  }
-  
-  PRO.tb <- tibble(group="PRO1_2",motif=names(tmp.PRO),fp=tmp.PRO)
-  PRO.tb$motif <- str_remove(PRO.tb$motif, pattern = "_.*")
-  if (parallel){
-    PRO.tb$TF.exp <- unlist(mclapply(PRO.tb$motif,function(m){
-      get.gene.exp(dataset=dataset, motif=m,conditions="PRO1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-    }, mc.cores = mc.cores))
-  } else {
-    PRO.tb$TF.exp <- sapply(PRO.tb$motif,function(m){
-      get.gene.exp(dataset=dataset, motif=m,conditions="PRO1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-    })
-  }
-  
-  
+  tmp.PRO <- fetchDotPlotData(tobias.gr=rV2.groups.tobias.h12.gr.dr, TF.motifs=TF.motifs.rep, conditions="PRO1_2", gr.filter=gr.filter, cons.gr=cons.subset, dataset=dataset, mc.cores=mc.cores)
   
   if (verbose){print("Preparing data for CO")}
-  
-  if (parallel){
-    tmp.CO <- mclapply(TF.motifs.rep,function(tf){
-      tmp.scores <- get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="CO1_2", gr.filter = gr.filter, binary = FALSE)
-      if (ncol(tmp.scores)==2){
-        return(mean(tmp.scores[,2]))
-      } else {
-        return(NA)
-      }
-    }, mc.cores=mc.cores)
-    names(tmp.CO) <- TF.motifs.rep
-    tmp.CO <- unlist(tmp.CO)
-  } else {
-    tmp.CO <- unlist(sapply(TF.motifs.rep,function(tf){get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="CO1_2", gr.filter = gr.filter, binary = FALSE)}))
-  }
-  
-  CO.tb <- tibble(group="CO1_2",motif=names(tmp.CO),fp=tmp.CO)
-  CO.tb$motif <- str_remove(CO.tb$motif, pattern = "_.*")
-  if (parallel){
-    CO.tb$TF.exp <- unlist(mclapply(CO.tb$motif,function(m){
-      get.gene.exp(dataset=dataset, motif=m,conditions="CO1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-    }, mc.cores = mc.cores))
-  } else {
-    CO.tb$TF.exp <- sapply(CO.tb$motif,function(m){
-      get.gene.exp(dataset=dataset, motif=m,conditions="CO1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-    })
-  }
-  
-  
+  tmp.CO <- fetchDotPlotData(tobias.gr=rV2.groups.tobias.h12.gr.dr, TF.motifs=TF.motifs.rep, conditions="CO1_2", gr.filter=gr.filter, cons.gr=cons.subset, dataset=dataset, mc.cores=mc.cores)
   
   if (verbose){print("Preparing data for GA")}
-  
-  if (parallel){
-    tmp.GA <- mclapply(TF.motifs.rep,function(tf){
-      tmp.scores <- get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="GA1_2", gr.filter = gr.filter, binary = FALSE)
-      if (ncol(tmp.scores)==2){
-        return(mean(tmp.scores[,2]))
-      } else {
-        return(NA)
-      }
-    }, mc.cores=mc.cores)
-    names(tmp.GA) <- TF.motifs.rep
-    tmp.GA <- unlist(tmp.GA)
-  } else {
-    tmp.GA <- unlist(sapply(TF.motifs.rep,function(tf){get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="GA1_2", gr.filter = gr.filter, binary = FALSE)}))
-  }
-  
-  GA.tb <- tibble(group="GA1_2",motif=names(tmp.GA),fp=tmp.GA)
-  GA.tb$motif <- str_remove(GA.tb$motif, pattern = "_.*")
-  if (parallel){
-    GA.tb$TF.exp <- unlist(mclapply(GA.tb$motif,function(m){
-      get.gene.exp(dataset=dataset, motif=m,conditions="GA1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-    }, mc.cores = mc.cores))
-  } else {
-    GA.tb$TF.exp <- sapply(GA.tb$motif,function(m){
-      get.gene.exp(dataset=dataset, motif=m,conditions="GA1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-    })
-  }
-  
+  tmp.GA <- fetchDotPlotData(tobias.gr=rV2.groups.tobias.h12.gr.dr, TF.motifs=TF.motifs.rep, conditions="GA1_2", gr.filter=gr.filter, cons.gr=cons.subset, dataset=dataset, mc.cores=mc.cores)
   
   if (verbose){print("Preparing data for GL")}
+  tmp.GL <- fetchDotPlotData(tobias.gr=rV2.groups.tobias.h12.gr.dr, TF.motifs=TF.motifs.rep, conditions="GL1_2", gr.filter=gr.filter, cons.gr=cons.subset, dataset=dataset, mc.cores=mc.cores)
   
-  if (parallel){
-    tmp.GL <- mclapply(TF.motifs.rep,function(tf){
-      tmp.scores <- get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="GL1_2", gr.filter = gr.filter, binary = FALSE)
-      if (ncol(tmp.scores)==2){
-        return(mean(tmp.scores[,2]))
-      } else {
-        return(NA)
-      }
-    }, mc.cores=mc.cores)
-    names(tmp.GL) <- TF.motifs.rep
-    tmp.GL <- unlist(tmp.GL)
-  } else {
-    tmp.GL <- unlist(sapply(TF.motifs.rep,function(tf){get.footprints(tobias.gr = rV2.groups.tobias.h12.gr.dr, TF.motif = tf, conditions="GL1_2", gr.filter = gr.filter, binary = FALSE)}))
-  }
-  
-  GL.tb <- tibble(group="GL1_2",motif=names(tmp.GL),fp=tmp.GL)
-  GL.tb$motif <- str_remove(GL.tb$motif, pattern = "_.*")
-  if (parallel){
-    GL.tb$TF.exp <- unlist(mclapply(GL.tb$motif,function(m){
-      get.gene.exp(dataset=dataset, motif=m,conditions="GL1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-    }, mc.cores = mc.cores))
-  } else {
-    GL.tb$TF.exp <- sapply(GL.tb$motif,function(m){
-      get.gene.exp(dataset=dataset, motif=m,conditions="GL1_2",group.by = "rv2.lineage_re", H.metadata = H.metadata)
-    })
-  }
-
-  dotplot.data <- full_join(PRO.tb,CO.tb)
-  dotplot.data <- full_join(dotplot.data,GA.tb)
-  dotplot.data <- full_join(dotplot.data,GL.tb)
+  dotplot.data <- full_join(tmp.PRO,tmp.CO)
+  dotplot.data <- full_join(dotplot.data,tmp.GA)
+  dotplot.data <- full_join(dotplot.data,tmp.GL)
   dotplot.data<- left_join(dotplot.data, TF.motifs, by=c("motif"="TF.motif"))
   
   exp.thr <- mean(dotplot.data$TF.exp,na.rm=T)
@@ -659,12 +588,11 @@ plotFootprintDotplot.rV2.noncomp <- function(tobias.fp.gr, gr.filter, TF.motifs,
   dotplot.data$TF.exp<-log10(dotplot.data$TF.exp)
   dotplot.data$TF.exp[zero.epression.li] <- NA
   
-  
   if (verbose){print("Generating plot")}
   
   # Plotting
   data.2.plot <- filter(dotplot.data,!(expression.class=="Uncorrelated") & TF.filt & TF.fp)
-  data.2.plot$group <- factor(data.2.plot$group, levels=c("PRO1_2","CO1_2","GA1_2","GL1_2"))
+  data.2.plot$group <- factor(data.2.plot$group, levels=c("PRO1_2","CO1_2","GA1_2","GL1_2","cons"))
   data.2.plot$motif.with.class <- ifelse(data.2.plot$expression.class=="Correlated",paste(data.2.plot$motif,"(C)",sep=" "), paste(data.2.plot$motif,"(S)",sep=" "))
   
   p.1 <- ggplot() + 
@@ -672,7 +600,11 @@ plotFootprintDotplot.rV2.noncomp <- function(tobias.fp.gr, gr.filter, TF.motifs,
     geom_point(aes(x = group, y=motif.with.class, size=fp, fill=TF.exp),filter(data.2.plot,group=="CO1_2"), shape=21)  +
     geom_point(aes(x = group, y=motif.with.class, size=fp, fill=TF.exp),filter(data.2.plot,group=="GA1_2"), shape=21) + 
     geom_point(aes(x = group, y=motif.with.class, size=fp, fill=TF.exp),filter(data.2.plot,group=="GL1_2"), shape=21) + 
-    theme_minimal() + scale_fill_gradient(low="white",high="darkred") + scale_x_discrete(drop = FALSE)
+    scale_fill_gradient(low="white",high="darkred") +
+    new_scale_fill() + 
+    geom_point(aes(x="cons", y=motif.with.class, fill=cons),filter(data.2.plot,group=="PRO1_2"),shape=22, size=15) +
+    scale_fill_gradient2(low="white",mid = "yellow",high="darkgreen", midpoint = .5) +
+    theme_minimal()  + scale_x_discrete(drop = FALSE)
   
   return(list(plot=p.1,data2plot=data.2.plot))
 }
