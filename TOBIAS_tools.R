@@ -538,6 +538,43 @@ fetchDotPlotData <- function(tobias.gr, TF.motifs, conditions, gr.filter, cons.g
   return(tmp.2)
 }
 
+
+fetch.TF.evidence <- function(tobias.gr, TF.motifs, conditions, gr.filter, cons.gr, dataset, mc.cores){
+  require(parallel)
+  tmp.1 <- mclapply(TF.motifs,function(tf){
+    tmp.scores <- get.footprints(tobias.gr = tobias.gr, TF.motif = tf, conditions=conditions, gr.filter = gr.filter, binary = FALSE)
+    if (ncol(tmp.scores)==2){
+      if (!is.null(cons.gr)){
+        tmp.mean.cons <- mean(filter_by_overlaps(cons.gr,StringToGRanges(tmp.scores[,1]))$score, na.rm=T)
+        return(c("fp.mean"=mean(tmp.scores[,2]), "cons.mean"=tmp.mean.cons))
+      } else {
+        return(mean(tmp.scores[,2]))
+      }
+    } else {
+      return(NA)
+    }
+  }, mc.cores=mc.cores)
+  names(tmp.1) <- TF.motifs
+  
+  if (is.null(cons.gr)){
+    tmp.1 <- unlist(tmp.1)
+    tmp.2 <- tibble(group=conditions,motif=names(tmp.1),fp=tmp.1)
+  } else {
+    tmp.2 <- as.data.frame(t(as_tibble(tmp.1))) %>% rownames_to_column("motif")
+    colnames(tmp.2) <- c("motif","fp","cons")
+    tmp.2$group <- conditions
+  }
+  
+  tmp.2$motif <- str_remove(tmp.2$motif, pattern = "_.*")
+  
+  tmp.2$TF.exp <- unlist(mclapply(tmp.2$motif,function(m){
+    get.gene.exp(dataset=dataset, motif=m,conditions=conditions,group.by = "rv2.lineage_re", H.metadata = H.metadata)
+  }, mc.cores = mc.cores))
+  
+  return(tmp.2)
+}
+
+
 plotFootprintDotplot.rV2.noncomp <- function(tobias.fp.gr, gr.filter, TF.motifs, dataset, H.metadata=H12.metadata, verbose=F, mc.cores=6, cons.gr=NULL){
   # Arguments:
   # tobias.fp.gr = TOBIAS dataobject a such from qs file
@@ -606,6 +643,14 @@ plotFootprintDotplot.rV2.noncomp <- function(tobias.fp.gr, gr.filter, TF.motifs,
     scale_fill_gradient2(low="white",mid = "yellow",high="darkgreen", midpoint = .5) +
     theme_minimal()  + scale_x_discrete(drop = FALSE)
   
-  return(list(plot=p.1,data2plot=data.2.plot))
+  return(list(plot=p.1,data2plot=data.2.plot, all.data=dotplot.data))
 }
 
+writeBED.SQL.data <- function(df, filename, meta_column){
+  tmp <- select(df, seqnames,start,end,eval(meta_column))
+  if (all(is.numeric(tmp[,4]))){
+    write_tsv(tmp,file=paste(filename,".bedgraph",sep=""), col_names = FALSE)
+  } else {
+    write_tsv(tmp,file=paste(filename,".bed",sep=""), col_names = FALSE)
+  }
+}
