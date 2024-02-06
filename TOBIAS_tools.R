@@ -648,7 +648,7 @@ plotFootprintDotplot.rV2.noncomp <- function(tobias.fp.gr, gr.filter, TF.motifs,
 
 writeBED.SQL.data <- function(df, filename, meta_column){
   tmp <- select(df, seqnames,start,end,eval(meta_column))
-  if (all(is.numeric(tmp[,4]))){
+  if (is.numeric(unlist(as.vector(tmp[,4])))){
     write_tsv(tmp,file=paste(filename,".bedgraph",sep=""), col_names = FALSE)
   } else {
     write_tsv(tmp,file=paste(filename,".bed",sep=""), col_names = FALSE)
