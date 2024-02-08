@@ -654,3 +654,66 @@ writeBED.SQL.data <- function(df, filename, meta_column){
     write_tsv(tmp,file=paste(filename,".bed",sep=""), col_names = FALSE)
   }
 }
+
+plotHorizDotplot <- function(dbname = "~/Workspace/TOBIAS.dr.h12.sqlite", feature.coords, exp.thr=1.5, mean_cons_thr=.5){
+  con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = dbname)
+  tobias.table <- tbl(con.obj, "tobias")
+  exp.table <- tbl(con.obj, "exp_scaled")
+  acc.table <- tbl(con.obj, "acc")
+  table.tmp.1 <- dplyr::filter(tobias.table, features==feature.coords) %>% left_join(exp.table) %>% left_join(acc.table, by=c("features"="features"))
+  
+  table.tmp.2 <- table.tmp.1 %>% collect()
+  
+  table.tmp.2 <- table.tmp.2 %>% filter((abs(PRO1_2.x)>exp.thr | abs(CO1_2.x)>exp.thr | abs(GA1_2.x)>exp.thr) & (PRO1_2_bound==1 | CO1_2_bound==1 | GA1_2_bound==1) & mean_cons>mean_cons_thr) %>% arrange(start)
+  
+  # Replace cases where TF motif repeats and overlaps itself with max values?.
+  
+  table.tmp.2$TFBS_name_comb <- paste(str_remove(string = table.tmp.2$TFBS_name, pattern = "_.*")," (",table.tmp.2$start,"-",table.tmp.2$end,")",sep="")
+  table.tmp.2$TFBS_name_comb <- factor(table.tmp.2$TFBS_name_comb, levels = table.tmp.2$TFBS_name_comb)
+  
+  p1 <- ggplot(table.tmp.2) + 
+    geom_point(aes(x = TFBS_name_comb, fill=PRO1_2.x, y="4",
+                   shape=as.character(PRO1_2_bound), size=PRO1_2_score)) +
+    geom_point(aes(x = TFBS_name_comb, fill=CO1_2.x, y="3",
+                   shape=as.character(CO1_2_bound), size=CO1_2_score)) + 
+    geom_point(aes(x = TFBS_name_comb, fill=GA1_2.x, y="2",
+                   shape=as.character(GA1_2_bound), size=GA1_2_score)) +
+    geom_point(aes(x = TFBS_name_comb, fill=GL1_2.x, y="1",
+                   shape=as.character(GL1_2_bound), size=GL1_2_score)) +
+    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(4,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Expression z-score", size="Footprint score")
+
+  DBI::dbDisconnect(con.obj)
+  return(p1)
+  }
+
+
+plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12.sqlite", feature.coords, exp.thr=1.2, mean_cons_thr=.5){
+  con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = dbname)
+  tobias.table <- tbl(con.obj, "tobias")
+  exp.table <- tbl(con.obj, "exp")
+  acc.table <- tbl(con.obj, "acc")
+  table.tmp.1 <- dplyr::filter(tobias.table, features==feature.coords) %>% left_join(exp.table) %>% left_join(acc.table, by=c("features"="features"))
+  
+  table.tmp.2 <- table.tmp.1 %>% collect()
+  
+  table.tmp.2 <- table.tmp.2 %>% filter((abs(PRO1_2.x)>exp.thr | abs(CO1_2.x)>exp.thr | abs(GA1_2.x)>exp.thr) & (PRO1_2_bound==1 | CO1_2_bound==1 | GA1_2_bound==1) & mean_cons>mean_cons_thr) %>% arrange(start)
+  
+  # Replace cases where TF motif repeats and overlaps itself with max values?.
+  
+  table.tmp.2$TFBS_name_comb <- paste(str_remove(string = table.tmp.2$TFBS_name, pattern = "_.*")," (",table.tmp.2$start,"-",table.tmp.2$end,")",sep="")
+  table.tmp.2$TFBS_name_comb <- factor(table.tmp.2$TFBS_name_comb, levels = table.tmp.2$TFBS_name_comb)
+  
+  p1 <- ggplot(table.tmp.2) + 
+    geom_point(aes(x = TFBS_name_comb, fill=PRO1_2_score, y="4",
+                   shape=as.character(PRO1_2_bound), size=log1p(PRO1_2.x)))
+    geom_point(aes(x = TFBS_name_comb, fill=CO1_2_score, y="3",
+                   shape=as.character(CO1_2_bound), size=log1p(CO1_2.x))) + 
+    geom_point(aes(x = TFBS_name_comb, fill=GA1_2_score, y="2",
+                   shape=as.character(GA1_2_bound), size=log1p(GA1_2.x))) +
+    geom_point(aes(x = TFBS_name_comb, fill=GL1_2_score, y="1",
+                   shape=as.character(GL1_2_bound), size=log1p(GL1_2.x))) +
+    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(4,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Footprint score", size="Expression log1p")
+  
+  DBI::dbDisconnect(con.obj)
+  return(p1)
+}
