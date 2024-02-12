@@ -20,7 +20,7 @@ get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NUL
   if (HOCOMOCO==11){
     motif.res.folders <- list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
   } else if (HOCOMOCO==12){
-    motif.res.folders <- list.files(res_path, pattern = "*H12CORE.*")
+    motif.res.folders <- list.files(res_path, pattern = "*H12CORE.*|*H11MO.*")
   }
   # Drop non-folders from the list
   motif.res.folder.i <- sapply(motif.res.folders,function(d){dir.exists(paste(res_path,d,sep=""))})
@@ -712,7 +712,7 @@ plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12.sqlite", fea
                    shape=as.character(GA1_2_bound), size=log1p(GA1_2.x))) +
     geom_point(aes(x = TFBS_name_comb, fill=GL1_2_score, y="1",
                    shape=as.character(GL1_2_bound), size=log1p(GL1_2.x))) +
-    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(4,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Footprint score", size="Expression log1p")
+    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(16,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Footprint score", size="Expression log1p")
   
   DBI::dbDisconnect(con.obj)
   return(p1)
