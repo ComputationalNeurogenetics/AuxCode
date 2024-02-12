@@ -699,13 +699,13 @@ plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12.sqlite", fea
   table.tmp.2 <- table.tmp.2 %>% filter((abs(PRO1_2.x)>exp.thr | abs(CO1_2.x)>exp.thr | abs(GA1_2.x)>exp.thr) & (PRO1_2_bound==1 | CO1_2_bound==1 | GA1_2_bound==1) & mean_cons>mean_cons_thr) %>% arrange(start)
   
   # Replace cases where TF motif repeats and overlaps itself with max values?.
-  
+  if (nrow(table.tmp.2)==0){return(NA)}
   table.tmp.2$TFBS_name_comb <- paste(str_remove(string = table.tmp.2$TFBS_name, pattern = "_.*")," (",table.tmp.2$start,"-",table.tmp.2$end,")",sep="")
   table.tmp.2$TFBS_name_comb <- factor(table.tmp.2$TFBS_name_comb, levels = table.tmp.2$TFBS_name_comb)
   
   p1 <- ggplot(table.tmp.2) + 
     geom_point(aes(x = TFBS_name_comb, fill=PRO1_2_score, y="4",
-                   shape=as.character(PRO1_2_bound), size=log1p(PRO1_2.x)))
+                   shape=as.character(PRO1_2_bound), size=log1p(PRO1_2.x))) +
     geom_point(aes(x = TFBS_name_comb, fill=CO1_2_score, y="3",
                    shape=as.character(CO1_2_bound), size=log1p(CO1_2.x))) + 
     geom_point(aes(x = TFBS_name_comb, fill=GA1_2_score, y="2",
@@ -714,6 +714,9 @@ plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12.sqlite", fea
                    shape=as.character(GL1_2_bound), size=log1p(GL1_2.x))) +
     scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(16,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Footprint score", size="Expression log1p")
   
+  acc.tmp.dat <- select(table.tmp.2, ends_with(".y")) %>% pivot_longer(everything()) %>% distinct() %>% filter(name %in% c("PRO1_2.y","CO1_2.y","GA1_2.y","GL1_2.y"))
+  acc.tmp.dat$name <- factor(acc.tmp.dat$name, levels=rev(c("PRO1_2.y","CO1_2.y","GA1_2.y","GL1_2.y")))
+  p2 <- ggplot(acc.tmp.dat, aes(x="Acc",y=name,fill=value)) + geom_point(shape=21, size=5) + theme_minimal() + ylab("Cell group") + xlab("") + scale_fill_viridis(option = "magma", limits=c(0,2.5)) + labs(fill="Accessibility")
   DBI::dbDisconnect(con.obj)
-  return(p1)
+  return(list(p1=p1,p2=p2))
 }
