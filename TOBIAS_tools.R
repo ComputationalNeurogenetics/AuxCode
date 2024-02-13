@@ -687,7 +687,7 @@ plotHorizDotplot <- function(dbname = "~/Workspace/TOBIAS.dr.h12.sqlite", featur
   }
 
 
-plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12.sqlite", feature.coords, exp.thr=1.2, mean_cons_thr=.5){
+plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", feature.coords, exp.thr=1.2, mean_cons_thr=.5){
   con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = dbname)
   tobias.table <- tbl(con.obj, "tobias")
   exp.table <- tbl(con.obj, "exp")
