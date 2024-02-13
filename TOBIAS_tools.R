@@ -700,7 +700,7 @@ plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
   
   # Replace cases where TF motif repeats and overlaps itself with max values?.
   if (nrow(table.tmp.2)==0){return(NA)}
-  table.tmp.2$TFBS_name_comb <- paste(str_remove(string = table.tmp.2$TFBS_name, pattern = "_.*")," (",table.tmp.2$start,"-",table.tmp.2$end,")",sep="")
+  table.tmp.2$TFBS_name_comb <- paste(str_replace(string = table.tmp.2$TFBS_name, pattern = "([:alpha:])+_.*", "\\1")," (",table.tmp.2$start,"-",table.tmp.2$end,")",sep="")
   table.tmp.2$TFBS_name_comb <- factor(table.tmp.2$TFBS_name_comb, levels = table.tmp.2$TFBS_name_comb)
   
   p1 <- ggplot(table.tmp.2) + 
