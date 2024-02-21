@@ -712,16 +712,17 @@ plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
                    shape=as.character(GA1_2_bound), size=log1p(GA1_2.x))) +
     geom_point(aes(x = TFBS_name_comb, fill=GL1_2_score, y="1",
                    shape=as.character(GL1_2_bound), size=log1p(GL1_2.x))) +
-    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(16,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Footprint score", size="Expression log1p")
+    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(16,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Footprint score", size="Expression log1p") + xlab("TF-motif")
   
   acc.tmp.dat <- select(table.tmp.2, ends_with(".y")) %>% pivot_longer(everything()) %>% distinct() %>% filter(name %in% c("PRO1_2.y","CO1_2.y","GA1_2.y","GL1_2.y"))
-  acc.tmp.dat$name <- factor(acc.tmp.dat$name, levels=rev(c("PRO1_2.y","CO1_2.y","GA1_2.y","GL1_2.y")))
-  p2 <- ggplot(acc.tmp.dat, aes(x="Acc",y=name,fill=value)) + geom_point(shape=21, size=5) + theme_minimal() + ylab("Cell group") + xlab("") + scale_fill_viridis(option = "magma", limits=c(0,2.5)) + labs(fill="Accessibility")
+  acc.tmp.dat$name <- acc.tmp.dat$name %>% str_remove(pattern = "\\.y")
+  acc.tmp.dat$name <- factor(acc.tmp.dat$name, levels=rev(c("PRO1_2","CO1_2","GA1_2","GL1_2")))
+  p2 <- ggplot(acc.tmp.dat, aes(x="Acc",y=name,fill=value)) + geom_point(shape=21, size=5) + theme_minimal() + ylab("Cell group") + xlab("") + scale_fill_viridis(option = "magma") + labs(fill="Accessibility")
   DBI::dbDisconnect(con.obj)
   return(list(p1=p1,p2=p2))
 }
 
-plotHorizDotplot_v3 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", feature.coords, exp.thr=1.2, mean_cons_thr=.5){
+plotHorizDotplot_v3 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", feature.coords, exp.thr=1.2, mean_cons_thr=.5, igv=NULL,cons.filt=NULL){
   con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = dbname)
   tobias.table <- tbl(con.obj, "tobias")
   exp.table <- tbl(con.obj, "exp")
@@ -747,18 +748,33 @@ plotHorizDotplot_v3 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
                    shape=as.character(GA1_2_bound), size=log1p(GA1_2.x))) +
     geom_point(aes(x = TFBS_name_comb, fill=GL1_2_score, y="1",
                    shape=as.character(GL1_2_bound), size=log1p(GL1_2.x))) +
-    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(16,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Footprint score", size="Expression log1p")
+    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(16,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Footprint score", size="Expression log1p") + xlab("TF-motif")
   
   acc.tmp.dat <- select(table.tmp.2, ends_with(".y")) %>% pivot_longer(everything()) %>% distinct() %>% filter(name %in% c("PRO1_2.y","CO1_2.y","GA1_2.y","GL1_2.y"))
-  acc.tmp.dat$name <- factor(acc.tmp.dat$name, levels=rev(c("PRO1_2.y","CO1_2.y","GA1_2.y","GL1_2.y"))) %>% str_remove(pattern = "\\.y")
+  acc.tmp.dat$name <- acc.tmp.dat$name %>% str_remove(pattern = "\\.y")
+  acc.tmp.dat$name <- factor(acc.tmp.dat$name, levels=rev(c("PRO1_2","CO1_2","GA1_2","GL1_2")))
   
   # Create accessibility side plot
   p2 <- ggplot(acc.tmp.dat, aes(x="Acc",y=name,fill=value)) + geom_point(shape=21, size=5) + theme_minimal() + ylab("Cell group") + xlab("") + scale_fill_viridis(option = "magma") + labs(fill="Accessibility")
   
-  # Create Rigv plot above
+  # Create igvR plot 
+  setBrowserWindowTitle(igv, "mm10 TOBIAS")
+  setGenome(igv, "mm10")
+  showGenomicRegion(igv, str_replace(string = feature.coords, pattern = "-", replacement = ":"))
   
+  current.loc <- StringToGRanges(paste(getGenomicRegion(igv)$chrom, getGenomicRegion(igv)$start, getGenomicRegion(igv)$end, sep="-"))
+  cons.filt.subset <- cons.filt[cons.filt %over% current.loc]
+  cons_filt <- igvR::GRangesQuantitativeTrack("conservation",cons.filt.subset)
+  displayTrack(igv, cons_filt)
   
+  TFBS_to_igvR <- data.frame(table.tmp.2 %>% select(seqnames,start,end))
+  TFBS_to_igvR.trck <- DataFrameAnnotationTrack("TFBS", TFBS_to_igvR, color="forestgreen", displayMode="EXPANDED", trackHeight = 200)
+  displayTrack(igv, TFBS_to_igvR.trck)
+  
+  saveToSVG(igv,"igv.tmp.svg")
+  
+  p3 <- cowplot::ggdraw() + cowplot::draw_image("./igv.tmp.svg")
   
   DBI::dbDisconnect(con.obj)
-  return(list(p1=p1,p2=p2))
+  return(list(p1=p1,p2=p2,p3=p3))
 }
