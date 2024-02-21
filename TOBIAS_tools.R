@@ -687,7 +687,7 @@ plotHorizDotplot <- function(dbname = "~/Workspace/TOBIAS.dr.h12.sqlite", featur
   }
 
 
-plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", feature.coords, exp.thr=1.2, mean_cons_thr=.5){
+plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", feature.coords, exp.thr=1.2, mean_cons_thr=.5, max.exp, max.acc, max.fp){
   con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = dbname)
   tobias.table <- tbl(con.obj, "tobias")
   exp.table <- tbl(con.obj, "exp")
@@ -712,12 +712,13 @@ plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
                    shape=as.character(GA1_2_bound), size=log1p(GA1_2.x))) +
     geom_point(aes(x = TFBS_name_comb, fill=GL1_2_score, y="1",
                    shape=as.character(GL1_2_bound), size=log1p(GL1_2.x))) +
-    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(16,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Footprint score", size="Expression log1p") + xlab("TF-motif")
+    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = 90)) + ylab("Cell group") + scale_shape_manual(values=c(16,21) , guide = "none") + scale_y_discrete("Cell group", labels=c("4"="PRO1_2","3"="CO1_2","2"="GA1_2","1"="GL1_2")) + labs(fill="Footprint score", size="Expression log1p") + xlab("TF-motif") +
+    scale_size_continuous(limit=c(0,max.exp))
   
   acc.tmp.dat <- select(table.tmp.2, ends_with(".y")) %>% pivot_longer(everything()) %>% distinct() %>% filter(name %in% c("PRO1_2.y","CO1_2.y","GA1_2.y","GL1_2.y"))
   acc.tmp.dat$name <- acc.tmp.dat$name %>% str_remove(pattern = "\\.y")
   acc.tmp.dat$name <- factor(acc.tmp.dat$name, levels=rev(c("PRO1_2","CO1_2","GA1_2","GL1_2")))
-  p2 <- ggplot(acc.tmp.dat, aes(x="Acc",y=name,fill=value)) + geom_point(shape=21, size=5) + theme_minimal() + ylab("Cell group") + xlab("") + scale_fill_viridis(option = "magma") + labs(fill="Accessibility")
+  p2 <- ggplot(acc.tmp.dat, aes(x="Acc",y=name,fill=value)) + geom_point(shape=21, size=5) + theme_minimal() + ylab("Cell group") + xlab("") + scale_fill_viridis(option = "magma", limit=c(0,max.acc)) + labs(fill="Accessibility")
   DBI::dbDisconnect(con.obj)
   return(list(p1=p1,p2=p2))
 }
@@ -778,3 +779,20 @@ plotHorizDotplot_v3 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
   DBI::dbDisconnect(con.obj)
   return(list(p1=p1,p2=p2,p3=p3))
 }
+
+find.maxes <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite",features){
+  feat.tmp <- pull(features, V2)
+  con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite")
+  tobias.table <- tbl(con.obj, "tobias")
+  exp.table <- tbl(con.obj, "exp")
+  acc.table <- tbl(con.obj, "acc")
+  table.tmp.1 <- dplyr::filter(tobias.table, features %in% feat.tmp) %>% left_join(exp.table) %>% left_join(acc.table, by=c("features"="features")) %>% filter(mean_cons>0.5)
+  table.tmp.2 <- table.tmp.1 %>% collect()
+  
+  max.acc <- max(table.tmp.2 %>% select(ends_with(".y")),na.rm = T)
+  max.exp <- log1p(max(table.tmp.2 %>% select(ends_with(".x")), na.rm = T))
+  max.fp <- max(table.tmp.2 %>% select(ends_with("_score")), na.rm = T)
+  DBI::dbDisconnect(con.obj)
+  return(list(max.acc=max.acc, max.exp=max.exp, max.fp=max.fp))
+}
+
