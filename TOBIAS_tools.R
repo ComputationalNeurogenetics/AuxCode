@@ -764,7 +764,7 @@ plotHorizDotplot_v3 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
   
   current.loc <- StringToGRanges(paste(getGenomicRegion(igv)$chrom, getGenomicRegion(igv)$start, getGenomicRegion(igv)$end, sep="-"))
   cons.filt.subset <- cons.filt[cons.filt %over% current.loc]
-  cons_filt <- igvR::GRangesQuantitativeTrack("conservation",cons.filt.subset)
+  cons_filt <- igvR::GRangesQuantitativeTrack("conservation",cons.filt.subset, min=0.5, autoscale = FALSE, max=1)
   displayTrack(igv, cons_filt)
   
   TFBS_to_igvR <- data.frame(table.tmp.2 %>% select(seqnames,start,end))
