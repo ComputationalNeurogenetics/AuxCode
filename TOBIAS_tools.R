@@ -797,3 +797,21 @@ find.maxes <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite",features){
   return(list(max.acc=max.acc, max.exp=max.exp, max.fp=max.fp))
 }
 
+extract.factors <- function(db.name, group_name, chr, start, end){
+  require(dbplyr)
+  require(DBI)
+  
+  if(!length(group_name)==1){stop("Give only one group_name at the time")}
+  if(!length(chr)==1){stop("Give only one chr at the time")}
+  if(!length(start)==1){stop("Give only one start coordinate at the time")}
+  if(!length(end)==1){stop("Give only one end coordinate at the time")}
+  if(!any(group_name %in% c("PRO1_2","CO1_2","GA1_2","GA3_4","GA5_6","GL1_2","GL3_4","GL5"))){stop("group_name must be one of the following: PRO1_2, CO1_2, GA1_2, GA3_4, GA5_6, GL1_2, GL3_4, GL5")}
+  
+  query<-paste('SELECT tb.* FROM tobias as tb,feature as ft, exp as exp WHERE ft.seqnames="',chr,'" AND ft.start>=',start,' AND ft.end<=',end,' AND tb.features==ft.feature AND mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2)', sep="")
+  
+  data.tmp.1 <- as_tibble(dbGetQuery(con.obj, query))
+  factors.out <- data.tmp.1 %>% distinct(TF_gene_name) %>% pull(TF_gene_name )
+  return(factors.out)
+}
+
+
