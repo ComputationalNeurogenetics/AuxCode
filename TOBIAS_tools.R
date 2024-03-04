@@ -800,6 +800,7 @@ find.maxes <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite",features){
 extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0){
   require(dbplyr)
   require(DBI)
+  con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = db.name)
   
   if(!length(group_name)==1){stop("Give only one group_name at the time")}
   if(!any(group_name %in% c("PRO1_2","CO1_2","GA1_2","GA3_4","GA5_6","GL1_2","GL3_4","GL5"))){stop("group_name must be one of the following: PRO1_2, CO1_2, GA1_2, GA3_4, GA5_6, GL1_2, GL3_4, GL5")}
