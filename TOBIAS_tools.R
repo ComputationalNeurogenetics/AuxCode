@@ -766,11 +766,11 @@ plotHorizDotplot_v3 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
   
   current.loc <- StringToGRanges(paste(getGenomicRegion(igv)$chrom, getGenomicRegion(igv)$start, getGenomicRegion(igv)$end, sep="-"))
   cons.filt.subset <- plyranges::filter_by_overlaps(cons.filt, current.loc)
-  cons_filt <- igvR::GRangesQuantitativeTrack("conservation",cons.filt.subset, min=0.5, autoscale = FALSE, max=1)
+  cons_filt <- igvR::GRangesQuantitativeTrack("conservation",cons.filt.subset, min=0.5, autoscale = FALSE, max=1,trackHeight = 20)
   displayTrack(igv, cons_filt)
   
   TFBS_to_igvR <- data.frame(table.tmp.2 %>%  dplyr::select(seqnames,start,end))
-  TFBS_to_igvR.trck <- DataFrameAnnotationTrack("TFBS", TFBS_to_igvR, color="forestgreen", displayMode="EXPANDED", trackHeight = 200)
+  TFBS_to_igvR.trck <- DataFrameAnnotationTrack("TFBS", TFBS_to_igvR, color="forestgreen", displayMode="EXPANDED", trackHeight = 100)
   displayTrack(igv, TFBS_to_igvR.trck)
   
   saveToSVG(igv,"igv.tmp.svg")
@@ -797,7 +797,7 @@ find.maxes <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite",features){
   return(list(max.acc=max.acc, max.exp=max.exp, max.fp=max.fp))
 }
 
-extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0){
+extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.data=FALSE){
   require(dbplyr)
   require(DBI)
   con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = db.name)
@@ -805,11 +805,57 @@ extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0){
   if(!length(group_name)==1){stop("Give only one group_name at the time")}
   if(!any(group_name %in% c("PRO1_2","CO1_2","GA1_2","GA3_4","GA5_6","GL1_2","GL3_4","GL5"))){stop("group_name must be one of the following: PRO1_2, CO1_2, GA1_2, GA3_4, GA5_6, GL1_2, GL3_4, GL5")}
   
-  query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, links as links, gene_metadata as gm WHERE tb.features==links.feature AND mean_cons>0.5 AND links.zscore>0 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.thr,' AND links.feature=tb.features', sep="")
-  
+  if (!is.null(zscore.thr)){
+    query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, links as links, gene_metadata as gm WHERE tb.features==links.feature AND tb.mean_cons>0.5 AND links.zscore>0 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.thr,'', sep="")
+  } else {
+    print("zscore.thr is NULL, ignoring gene_name and fetching all bound TF events for the group and exp condition")
+    query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, gene_metadata as gm WHERE tb.mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND gm.gene_name="',gene_name,'"', sep="")
+  }
   data.tmp.1 <- as_tibble(dbGetQuery(con.obj, query))
-  factors.out <- data.tmp.1 %>% distinct(TF_gene_name) %>% pull(TF_gene_name )
-  return(factors.out)
+  if (!full.data){
+    factors.out <- data.tmp.1 %>% distinct(TF_gene_name) %>% pull(TF_gene_name )
+    return(factors.out)
+  } else {
+    return(data.tmp.1)
+  }
 }
 
+granges.overlap.test <- function(set1, set2, numPermutations=100){
+  require(parallel)
+  
+  overlapCounts <- unlist(mclapply(1:numPermutations, function(i) {
+    # Permute set2
+    permutedSet2 <- generate.random.granges(seqname = unique(seqnames(set2)), minCoord = min(start(set2)), maxCoord = max(start(set2)), lengths = width(set2))
+    
+    # Calculate overlaps
+    overlaps <- findOverlaps(set1, permutedSet2)
+    return(length(overlaps))
+  },mc.cores=8))
+  
+  # Calculate the observed number of overlaps
+  observedOverlaps <- length(findOverlaps(set1, set2))
+  
+  # Calculate p-value
+  pValue <- sum(overlapCounts >= observedOverlaps) / numPermutations
+  return(list(observedOverlaps=observedOverlaps, pValue=pValue))
+}
 
+generate.random.granges <- function(seqname, minCoord, maxCoord, lengths){
+  n <- length(lengths)
+  # Adjusted maximum start position for each length to ensure ranges fit within [minCoord, maxCoord]
+  maxStarts <- maxCoord - lengths + 1
+  
+  set.seed(123)  # For reproducibility
+  starts <- sapply(seq_along(lengths), function(i) sample(minCoord:maxStarts[i], 1))
+  
+  # Calculate end positions based on the random starts and lengths
+  ends <- starts + lengths - 1
+  
+  # Create the GRanges object
+  randomRanges <- GRanges(
+    seqnames = Rle(seqname, n),
+    ranges = IRanges(start = starts, end = ends),
+    strand = Rle("*", n)  # Assuming strand is not relevant; otherwise, adjust as needed
+  )
+  return(randomRanges)
+}
