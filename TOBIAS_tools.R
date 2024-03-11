@@ -723,7 +723,7 @@ plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
   return(list(p1=p1,p2=p2))
 }
 
-plotHorizDotplot_v3 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", feature.coords, exp.thr=1.2, mean_cons_thr=.5, igv=NULL,cons.filt=NULL,max.exp, max.acc, max.fp){
+plotHorizDotplot_v3 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", feature.coords, exp.thr=1.2, acc.thr=0.06, mean_cons_thr=.5, igv=NULL,cons.filt=NULL,max.exp, max.acc, max.fp){
   con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = dbname)
   tobias.table <- tbl(con.obj, "tobias")
   exp.table <- tbl(con.obj, "exp")
@@ -732,7 +732,7 @@ plotHorizDotplot_v3 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
   
   table.tmp.2 <- table.tmp.1 %>% collect()
   
-  table.tmp.2 <- table.tmp.2 %>% filter((abs(PRO1_2.x)>exp.thr | abs(CO1_2.x)>exp.thr | abs(GA1_2.x)>exp.thr) & (PRO1_2_bound==1 | CO1_2_bound==1 | GA1_2_bound==1) & mean_cons>mean_cons_thr) %>% arrange(start)
+  table.tmp.2 <- table.tmp.2 %>% filter((abs(PRO1_2.x)>exp.thr | abs(CO1_2.x)>exp.thr | abs(GA1_2.x)>exp.thr | abs(GL1_2.x)>exp.thr) & (abs(PRO1_2.y)>acc.thr | abs(CO1_2.y)>acc.thr | abs(GA1_2.y)>acc.thr | abs(GL1_2.y)>acc.thr) & (PRO1_2_bound==1 | CO1_2_bound==1 | GA1_2_bound==1 | GL1_2_bound==1) & mean_cons>mean_cons_thr) %>% arrange(start)
   
   # Replace cases where TF motif repeats and overlaps itself with max values?.
   if (nrow(table.tmp.2)==0){return(NA)}
