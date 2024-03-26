@@ -797,6 +797,20 @@ find.maxes <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite",features){
   return(list(max.acc=max.acc, max.exp=max.exp, max.fp=max.fp))
 }
 
+get.total.TF.count <- function(db.name, group_name, zscore.thr=0, acc.thr=0.0613){
+  require(dbplyr)
+  require(DBI)
+  con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = db.name)
+  
+  if(!length(group_name)==1){stop("Give only one group_name at the time")}
+  if(!any(group_name %in% c("PRO1_2","CO1_2","GA1_2","GA3_4","GA5_6","GL1_2","GL3_4","GL5"))){stop("group_name must be one of the following: PRO1_2, CO1_2, GA1_2, GA3_4, GA5_6, GL1_2, GL3_4, GL5")}
+  
+  query<-paste('SELECT COUNT(DISTINCT tb.TF_gene_name) FROM tobias as tb, exp as exp, acc as ac, links as links WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.zscore>',zscore.thr,'', sep="")
+  
+  data.tmp.1 <- dbGetQuery(con.obj, query)
+  #factors.out <- data.tmp.1 %>% distinct(TF_gene_name) %>% pull(TF_gene_name)
+  return(data.tmp.1[,1])
+}
 extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.data=FALSE,acc.thr=0.0613, bound=T){
   require(dbplyr)
   require(DBI)
@@ -823,6 +837,8 @@ extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.d
     return(data.tmp.1)
   }
 }
+
+
 
 granges.overlap.test <- function(set1, set2, numPermutations=100){
   require(parallel)
@@ -862,4 +878,95 @@ generate.random.granges <- function(seqname, minCoord, maxCoord, lengths){
     strand = Rle("*", n)  # Assuming strand is not relevant; otherwise, adjust as needed
   )
   return(randomRanges)
+}
+
+common.regulator.stat.test <- function(list.of.TF, seed=123, total.TF.count, simulations=1000000,mc.cores=8){
+  set.seed(seed)
+  require(parallel)
+  
+  # Example data: Number of unique TFs regulating each of 3 genes
+  num_TFs_per_gene <- sapply(list.of.TF,length)  # For genes 1, 2, and 3, respectively
+  total_TFs <- total.TF.count  # Total pool of unique TFs
+  C <- length(Reduce(intersect, list.of.TF)) # Observed number of common TFs across all genes
+  
+  # Simulate the process
+  common_TFs_count <- numeric(simulations)
+  
+  common_TFs_count <- unlist(mclapply(1:simulations, function(i) {
+    # Simulate TF sets for each gene
+    TF_sets <- lapply(num_TFs_per_gene, function(x) sample(total_TFs, x))
+    
+    # Find common TFs across all sets
+    common_TFs <- Reduce(intersect, TF_sets)
+    
+    # Record the number of common TFs in this simulation
+    length(common_TFs)
+  }, mc.cores = mc.cores))
+  
+  # Estimate the probability of observing at least C common TFs
+  prob_at_least_C <- mean(common_TFs_count >= C)
+  
+  if (prob_at_least_C!=0){
+    text.res <- paste("Estimated probability of observing at least ", C, " common TFs across genes: ", prob_at_least_C,sep="")
+    return(list(text.res=text.res, p.value=prob_at_least_C))
+  } else {
+    text.res <- paste("Estimated probability of observing at least ", C, " common TFs across genes: <", 1/simulations,sep="")
+    return(list(text.res=text.res, p.value=1/simulations))
+  }
+  
+}
+
+# Define a function to safely get pairs and handle vectors with less than 2 unique elements
+get_pairs <- function(vec) {
+  # Check if the vector has less than 2 unique elements
+  if (length(unique(vec)) < 2) {
+    return(tibble(V1 = character(), V2 = character())) # Return an empty tibble
+  }
+  
+  # Generate all unique pairs from the vector
+  pairs <- t(combn(unique(vec), 2))
+  
+  # Return a data frame (tibble) of the pairs
+  tibble(V1 = pairs[, 1], V2 = pairs[, 2])
+}
+
+
+# Simulation function
+simulate_intersection <- function(T, N, M, C, simulations) {
+  intersection_count <- numeric(simulations)
+  
+  for (i in 1:simulations) {
+    # Simulate TF selection for each gene
+    selections <- lapply(N, function(n) sample(T, n))
+    
+    # Calculate intersection
+    intersection <- Reduce(intersect, selections)
+    intersection_count[i] <- length(intersection)
+  }
+  
+  # Calculate probability of intersection of size C or larger
+  prob_cumulative <- mean(intersection_count >= C)
+  return(prob_cumulative)
+}
+
+# Simulation function for exact intersection
+simulate_exact_intersection <- function(T, N, M, C, simulations) {
+  exact_match_count <- 0
+  
+  for (i in 1:simulations) {
+    # Simulate TF selection for each gene
+    selections <- lapply(N, function(n) sample(T, n))
+    
+    # Calculate intersection
+    intersection <- Reduce(intersect, selections)
+    
+    # Check if intersection size is exactly C
+    if (length(intersection) == C) {
+      exact_match_count <- exact_match_count + 1
+    }
+  }
+  
+  # Calculate probability of exact intersection size C
+  prob_exact <- exact_match_count / simulations
+  return(prob_exact)
 }
