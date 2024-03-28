@@ -783,7 +783,7 @@ plotHorizDotplot_v3 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
 
 find.maxes <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite",features){
   feat.tmp <- pull(features, V2)
-  con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite")
+  con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = dbname)
   tobias.table <- tbl(con.obj, "tobias")
   exp.table <- tbl(con.obj, "exp")
   acc.table <- tbl(con.obj, "acc")
