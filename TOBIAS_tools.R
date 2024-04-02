@@ -687,7 +687,7 @@ plotHorizDotplot <- function(dbname = "~/Workspace/TOBIAS.dr.h12.sqlite", featur
   }
 
 
-plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", feature.coords, exp.thr=1.2, mean_cons_thr=.5, max.exp, max.acc, max.fp){
+plotHorizDotplot_v2 <- function(dbname, feature.coords, exp.thr=1.2, mean_cons_thr=.5, max.exp, max.acc, max.fp){
   con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = dbname)
   tobias.table <- tbl(con.obj, "tobias")
   exp.table <- tbl(con.obj, "exp")
@@ -718,6 +718,41 @@ plotHorizDotplot_v2 <- function(dbname = "~/Workspace/TOBIAS.dr.h12_2.sqlite", f
   acc.tmp.dat <-  dplyr::select(table.tmp.2, ends_with(".y")) %>% pivot_longer(everything()) %>% distinct() %>% filter(name %in% c("PRO1_2.y","CO1_2.y","GA1_2.y","GL1_2.y"))
   acc.tmp.dat$name <- acc.tmp.dat$name %>% str_remove(pattern = "\\.y")
   acc.tmp.dat$name <- factor(acc.tmp.dat$name, levels=rev(c("PRO1_2","CO1_2","GA1_2","GL1_2")))
+  p2 <- ggplot(acc.tmp.dat, aes(x="Acc",y=name,fill=value)) + geom_point(shape=21, size=5) + theme_minimal() + ylab("Cell group") + xlab("") + scale_fill_viridis(limit=c(0,max.acc)) + labs(fill="Accessibility")
+  DBI::dbDisconnect(con.obj)
+  return(list(p1=p1,p2=p2))
+}
+
+
+plotHorizDotplot_v2_serot <- function(dbname, feature.coords, exp.thr=1.2, mean_cons_thr=.5, max.exp, max.acc, max.fp){
+  con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = dbname)
+  tobias.table <- tbl(con.obj, "tobias")
+  exp.table <- tbl(con.obj, "exp")
+  acc.table <- tbl(con.obj, "acc")
+  table.tmp.1 <- dplyr::filter(tobias.table, features==feature.coords) %>% left_join(exp.table) %>% left_join(acc.table, by=c("features"="features"))
+  
+  table.tmp.2 <- table.tmp.1 %>% collect()
+  
+  table.tmp.2 <- table.tmp.2 %>% filter((abs(SR1.x)>exp.thr | abs(SR2.x)>exp.thr | abs(SR3.x)>exp.thr) & (SR1_bound==1 | SR2_bound==1 | SR3_bound==1) & mean_cons>mean_cons_thr) %>% arrange(start)
+  
+  # Replace cases where TF motif repeats and overlaps itself with max values?.
+  if (nrow(table.tmp.2)==0){return(NA)}
+  table.tmp.2$TFBS_name_comb <- paste(str_replace(string = table.tmp.2$TFBS_name, pattern = "([:alpha:])+_.*", "\\1")," (",table.tmp.2$start,"-",table.tmp.2$end,")",sep="")
+  table.tmp.2$TFBS_name_comb <- factor(table.tmp.2$TFBS_name_comb, levels = table.tmp.2$TFBS_name_comb)
+  
+  p1 <- ggplot(table.tmp.2) + 
+    geom_point(aes(x = TFBS_name_comb, fill=SR1_score, y="4",
+                   shape=as.character(SR1_bound), size=log1p(SR1.x))) +
+    geom_point(aes(x = TFBS_name_comb, fill=SR2_score, y="3",
+                   shape=as.character(SR2_bound), size=log1p(SR2.x))) + 
+    geom_point(aes(x = TFBS_name_comb, fill=SR3_score, y="2",
+                   shape=as.character(SR3_bound), size=log1p(SR3.x))) +
+    scale_fill_gradient2(low="blue", mid="gray",high="red", midpoint = 0) + theme_minimal() + theme(axis.text.x = element_text(size = 12, angle = -90, hjust=0, vjust=0.5)) + ylab("Cell group") + scale_shape_manual(values=c(16,21), labels=c("Unbound","Bound"), name="Binary bound-status") + scale_y_discrete("Cell group", labels=c("3"="SR3","2"="SR2","1"="SR1")) + labs(fill="Footprint score", size="Expression log1p") + xlab("TF-motif") +
+    scale_size_continuous(limit=c(0,max.exp)) + guides(size = guide_legend(override.aes = list(shape = 1)), collect=TRUE)
+  
+  acc.tmp.dat <-  dplyr::select(table.tmp.2, ends_with(".y")) %>% pivot_longer(everything()) %>% distinct() %>% filter(name %in% c("SR1.y","SR2.y","SR3.y"))
+  acc.tmp.dat$name <- acc.tmp.dat$name %>% str_remove(pattern = "\\.y")
+  acc.tmp.dat$name <- factor(acc.tmp.dat$name, levels=rev(c("SR1","SR2","SR3","SR4")))
   p2 <- ggplot(acc.tmp.dat, aes(x="Acc",y=name,fill=value)) + geom_point(shape=21, size=5) + theme_minimal() + ylab("Cell group") + xlab("") + scale_fill_viridis(limit=c(0,max.acc)) + labs(fill="Accessibility")
   DBI::dbDisconnect(con.obj)
   return(list(p1=p1,p2=p2))
