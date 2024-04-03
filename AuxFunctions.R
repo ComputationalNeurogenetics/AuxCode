@@ -1799,4 +1799,21 @@ plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.o
   }
 }
 
-
+formatGOenrichRes <- function(sampleGOdata,p.val.thr=0.05){
+  resultFisher <- runTest(sampleGOdata, algorithm = "classic", statistic = "fisher")
+  allRes <- as_tibble(GenTable(sampleGOdata, classicFisher = resultFisher, ranksOf = "classicFisher", topNodes = 5000))
+  specRes <- allRes %>% filter(GO.ID %in% c("GO:0097154","GO:1905962","GO:0045664"))
+  allRes <- allRes %>% filter(classicFisher < p.val.thr)
+  
+  allRes$genes.in.classes <- sapply(allRes$GO.ID,function(GO_id){
+    tmp.genes <- intersect(genesInTerm(sampleGOdata, GO_id)[[1]], sigGenes(sampleGOdata))
+    return(paste(tmp.genes, collapse = ", "))
+  })
+  
+  specRes$genes.in.classes <- sapply(specRes$GO.ID,function(GO_id){
+    tmp.genes <- intersect(genesInTerm(sampleGOdata, GO_id)[[1]], sigGenes(sampleGOdata))
+    return(paste(tmp.genes, collapse = ", "))
+  })
+  
+  return(list(allRes=allRes,specRes=specRes))
+}
