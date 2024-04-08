@@ -846,7 +846,9 @@ get.total.TF.count <- function(db.name, group_name, zscore.thr=0, acc.thr=0.0613
   #factors.out <- data.tmp.1 %>% distinct(TF_gene_name) %>% pull(TF_gene_name)
   return(data.tmp.1[,1])
 }
-extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.data=FALSE,acc.thr=0.0613, bound=T){
+
+
+extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.data=FALSE,acc.thr=0, bound=T){
   require(dbplyr)
   require(DBI)
   con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = db.name)
@@ -856,7 +858,7 @@ extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.d
   
   if (!is.null(zscore.thr)){
     if (bound){
-      query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, acc as ac, links as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.thr,'', sep="")
+      query<-paste('SELECT tb.*,ac.* FROM tobias as tb, exp as exp, acc as ac, links as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.thr,'', sep="")
     } else {
       query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, acc as ac, links as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.thr,'', sep="")
     }
@@ -864,16 +866,20 @@ extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.d
     print("zscore.thr is NULL, ignoring gene_name and fetching all bound TF events for the group and exp condition")
     query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, gene_metadata as gm WHERE tb.mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND gm.gene_name="',gene_name,'"', sep="")
   }
-  data.tmp.1 <- as_tibble(dbGetQuery(con.obj, query))
+  data.tmp.1 <- as_tibble(dbGetQuery(con.obj, query),.name_repair = "unique")
   if (!full.data){
-    factors.out <- data.tmp.1 %>% distinct(TF_gene_name) %>% pull(TF_gene_name )
+    factors.out <- data.tmp.1 %>% distinct(TF_gene_name) %>% pull(TF_gene_name)
     return(factors.out)
   } else {
     return(data.tmp.1)
   }
 }
 
-
+plotAcc <- function(db.name = db.name, group_name, gene_name, zscore.thr,acc.thr){
+  data.out <- extract.factors(db.name = db.name, group_name = group_name, gene_name = gene_name, zscore.thr=zscore.thr,acc.thr = acc.thr, full.data = T)
+  
+  
+}
 
 granges.overlap.test <- function(set1, set2, numPermutations=100){
   require(parallel)
