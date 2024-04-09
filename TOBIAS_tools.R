@@ -875,10 +875,21 @@ extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.d
   }
 }
 
-plotAcc <- function(db.name = db.name, group_name, gene_name, zscore.thr,acc.thr){
-  data.out <- extract.factors(db.name = db.name, group_name = group_name, gene_name = gene_name, zscore.thr=zscore.thr,acc.thr = acc.thr, full.data = T)
+plotCommonAcc <- function(db.name = db.name, group_name, selector_genes, zscore.thr,acc.thr){
+  require(dbplyr)
+  require(DBI)
   
+  data.out <-  lapply(selector_genes,function(selector_gene){
+    extract.factors(db.name = db.name, group_name = group_name, gene_name = selector_gene, zscore.thr=zscore.thr,acc.thr = acc.thr, full.data = T)
+  })
   
+  common.factors <- Reduce(intersect,sapply(data.out,function(targets){targets %>% distinct(TF_gene_name) %>% pull(TF_gene_name)}))
+
+  data.out.tb <- do.call(rbind,data.out) %>% filter(TF_gene_name %in% common.factors)
+
+  data.to.plot <- data.out.tb %>% select(TF_gene_name,any_of(group_name)) %>% pivot_longer(names_to = "group", values_to = "acc", cols = -one_of("TF_gene_name"))
+  p1 <- ggplot(data.to.plot,aes(x=TF_gene_name, y=acc)) + geom_boxplot() + theme_minimal() + ylab("Accessibility") + xlab("TF") + ggtitle(paste("Acc. values of features bound by common regulators of",paste(selector_genes, collapse=","),"in", group_name,sep = " ")) + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + scale_y_continuous(breaks = seq(0, max(data.to.plot$acc), .25))
+  return(p1)
 }
 
 granges.overlap.test <- function(set1, set2, numPermutations=100){
