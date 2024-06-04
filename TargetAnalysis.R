@@ -113,9 +113,10 @@ mean.fxn <- function (x,pseudocount.use=1, base=2)
 }
 
 
-getTargets_SR <- function(TF_name, CT, Cons, ft){
+getTargets_SR <- function(TF_name,con){
   targetQuery <- paste("SELECT 
     gm.gene_name,
+    gm.ensg_id,
     COUNT(CASE WHEN li.zscore > 0 THEN 1 ELSE NULL END) AS count_zscore_positive,
     COUNT(CASE WHEN li.zscore < 0 THEN 1 ELSE NULL END) AS count_zscore_negative,
     COUNT(DISTINCT li.feature) AS count_distinct_feature,
@@ -145,12 +146,14 @@ GROUP BY
   
   target.data <- as_tibble(dbGetQuery(con, targetQuery))
   targets <- unique(pull(target.data, gene_name))
-  return(list(targets=targets, target.data=target.data))
+  targets_gene_id <- unique(pull(target.data, ensg_id))
+  return(list(targets_gene_name=targets, targets_gene.id=targets_gene_id, target.data=target.data))
 }
 
-getTargets <- function(TF_name, CT, Cons, ft){
+getTargets_rV2 <- function(TF_name,con){
   targetQuery <- paste("SELECT 
     gm.gene_name,
+    gm.ensg_id,
     COUNT(CASE WHEN li.zscore > 0 THEN 1 ELSE NULL END) AS count_zscore_positive,
     COUNT(CASE WHEN li.zscore < 0 THEN 1 ELSE NULL END) AS count_zscore_negative,
     COUNT(DISTINCT li.feature) AS count_distinct_feature,
@@ -181,7 +184,8 @@ GROUP BY
   
   target.data <- as_tibble(dbGetQuery(con, targetQuery))
   targets <- unique(pull(target.data, gene_name))
-  return(list(targets=targets, target.data=target.data))
+  targets_gene_id <- unique(pull(target.data, ensg_id))
+  return(list(targets_gene_name=targets, targets_gene.id=targets_gene_id, target.data=target.data))
 }
 
 do.GSEA <- function(targets,DEG.res,TF.name, comp.title){
