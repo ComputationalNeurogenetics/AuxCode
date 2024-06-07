@@ -29,52 +29,31 @@ extract_gene_enrichments <- function(ranks,gene_sets){
 }
 
 
-drawTargetLinePlot <- function(DEG.res, gene_name2id, gene_id2name,limits.to.plot, cell.groups){
+drawTargetLinePlot <- function(DEG.res, gene_name2id, gene_id2name, limits.to.plot, cell.groups){
   
-  deg.data <- DEG.res$d1 %>% filter(p_val_adj<0.01) %>% mutate(rank = dense_rank(avg_log2FC)) %>% select(ensg_id,rank,SR2_exp_avg_log2,SR3_exp_avg_log2) %>% pivot_longer(cols = where(is.double), names_to = "cell_group", values_to = "exp_avg_log2")
+  deg.data <- DEG.res$d1 %>% filter(p_val_adj<0.01) %>% mutate(rank = row_number()) %>% select(ensg_id,rank,matches("exp_avg_log2$")) %>% pivot_longer(cols = where(is.double), names_to = "cell_group", values_to = "exp_avg_log2")
   
   limits.to.plot <- DEG.res$limits
-  
-  mid.upper.limit=limits.to.plot$mid.upper.limit
-  mid.lower.limit=limits.to.plot$mid.lower.limit
   upper.limit=limits.to.plot$upper.limit
   lower.limit=limits.to.plot$lower.limit
-  upper.pos=limits.to.plot$upper.pos
-  lower.pos=limits.to.plot$lower.pos
-  xmax.right=nrow(DEG.res$d1 %>% filter(p_val_adj<0.01))
   
-  ggplot(deg.data, aes(x=rank,y=exp_avg_log2, group=cell_group)) + geom_line(aes(colour = cell_group)) + theme_minimal() + theme(
-    axis.text.x = element_text(size = 18),
-    axis.text.y = element_text(size = 18),
-    legend.text = element_text(size = 12)
-  ) + xlab("DEG genes in order of ratio") + ylab("Expression avg log2") + geom_rect(aes(xmin=0,xmax=upper.pos,ymin=-0.05,ymax=0.05), fill="blue", alpha=0.002) +
-    geom_rect(aes(xmin=lower.pos,xmax=xmax.right,ymin=-0.05,ymax=0.05), fill="red", alpha=0.002)
+  upper.pos=which.min(abs(filter(DEG.res$d1,p_val_adj<0.01) %>% pull(avg_log2FC) - upper.limit))
+  lower.pos=which.min(abs(filter(DEG.res$d1,p_val_adj<0.01) %>% pull(avg_log2FC) - lower.limit))
+  xmax.right=nrow(filter(DEG.res$d1,p_val_adj<0.01))
   
-  # TODO: add colored boxes? Ratio to another y-axis?
+  cell_group_colors <- c("GA1_2_exp_avg_log2" = "blue", "GL1_2_exp_avg_log2" = "red") 
   
-  # No, tables data is needed to make plots, wewrite these alltogether!!
-  
-  
-  target.genes.in.order <- names(sort(DEG.res[target.genes], decreasing = TRUE))
-  Targets.expression.avg <- log1p(t(assay.averages$RNA[sapply(target.genes.in.order,function(id){gene_name2id[[id]]}),cell.groups]))
-  colnames(Targets.expression.avg) <- sapply(colnames(Targets.expression.avg),function(id){gene_id2name[[id]]})
-  col_fun = colorRamp2(c(min(Targets.expression.avg), median(Targets.expression.avg),max(Targets.expression.avg)), c("white", "red","darkred"))
-  
-  color_factor <- factor(
-    ifelse(DEG.res[target.genes.in.order] > upper.limit, "GA leading edge",
-           ifelse(DEG.res[target.genes.in.order] <= mid.lower.limit & DEG.res[target.genes.in.order] >= mid.upper.limit, "Neutral",
-                  ifelse(DEG.res[target.genes.in.order] < lower.limit, "GL trailing edge", "white")
-           )
-    ),
-    levels = c("GL trailing edge", "white", "Neutral", "GA leading edge")
-  )
-  
-  col_anno <- HeatmapAnnotation(target_gene_group = color_factor,
-                                col = list(target_gene_group = c("GL trailing edge"="red" , "white" = "white", "Neutral" = "green", "GA leading edge" = "blue")),
-                                annotation_legend_param = list(target_gene_group = list(title = "Target gene group")))
-  
-  h1 <- Heatmap(as.matrix(Targets.expression.avg), cluster_columns = FALSE,col=col_fun, show_column_names = FALSE,bottom_annotation = col_anno,heatmap_legend_param = list(title = "Target Expression (log1p)"))
-  return(h1)
+  l.1 <- ggplot(deg.data, aes(x=rank,y=exp_avg_log2, group=cell_group)) + geom_line(aes(colour = cell_group),alpha=.25) + theme_minimal() + theme(
+    axis.text.x = element_text(size = 15),
+    axis.text.y = element_text(size = 15),
+    legend.text = element_text(size = 6),
+    legend.position = "bottom") +
+    scale_color_manual(values = cell_group_colors) +
+    xlab("DEG target genes in order of avg_log2FC") + ylab("Expression avg log2") +
+    geom_rect(aes(xmin=0,xmax=upper.pos,ymin=-0.1,ymax=0.1), fill="blue", alpha=0.002) +
+    geom_rect(aes(xmin=lower.pos,xmax=xmax.right,ymin=-0.1,ymax=0.1), fill="red", alpha=0.002)
+
+return(l.1)
 }
 
 drawTargetHeatmap <- function(DEG.res, target.genes, assay.averages,gene_name2id, gene_id2name,limits.to.plot, cell.groups){
@@ -220,7 +199,7 @@ do.GSEA <- function(targets,DEG.res,TF.name, comp.title){
   #   
   xmax.right <- nrow(DEG.res)
   # 
-  limits <- list(upper.limit=upper.limit,lower.limit=lower.limit,mid.lower.limit=mid.lower.limit,mid.upper.limit=mid.upper.limit)
+  limits <- list(upper.pos=upper.pos,lower.pos=lower.pos,upper.limit=upper.limit,lower.limit=lower.limit,mid.lower.limit=mid.lower.limit,mid.upper.limit=mid.upper.limit)
   
   
   p1 <- plotEnrichment(targets, DEG.res.GSEA) + ggtitle(paste(TF.name,"target enrichments in", comp.title)) + geom_rect(aes(xmin=0,xmax=upper.pos,ymin=-0.05,ymax=0.05), fill="blue", alpha=0.002) + geom_rect(aes(xmin=lower.pos,xmax=xmax.right,ymin=-0.05,ymax=0.05), fill="red", alpha=0.002) #geom_rect(aes(xmin=mid.lower.index,xmax=mid.upper.index,ymin=-0.05,ymax=0.05), fill="green", alpha=0.002) + 
