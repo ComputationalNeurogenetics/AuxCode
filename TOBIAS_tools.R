@@ -1,5 +1,91 @@
 # Set of functions to handle TOBIAS data object (Granges list with specific content)
 
+get_BINDetect_snakemake_results <- function(res_path, parallel = FALSE, mc.cores = NULL, HOCOMOCO = 11) {
+  # List directories based on HOCOMOCO version
+  motif.res.folders <- if (HOCOMOCO == 11) {
+    list.files(res_path, pattern = "(.*\\.H[0-9]{2}MO\\.[A-Z]{1})|(\\.[0-9])")
+  } else if (HOCOMOCO == 12) {
+    list.files(res_path, pattern = "*H12CORE.*|*H11MO.*")
+  } else {
+    stop("Invalid HOCOMOCO version. Please use 11 or 12.")
+  }
+  
+  # Debug: Print the identified directories
+  message("Identified directories: ", paste(motif.res.folders, collapse = ", "))
+  
+  # Filter only directories
+  motif.res.folders <- motif.res.folders[sapply(motif.res.folders, function(d) dir.exists(file.path(res_path, d)))]
+  
+  # Debug: Print the directories after filtering
+  message("Filtered directories: ", paste(motif.res.folders, collapse = ", "))
+  
+  process_folder <- function(name) {
+    # Ensure necessary libraries are loaded within the worker process
+    library(tidyverse)
+    library(GenomicRanges)
+    
+    tryCatch({
+      # Construct file path
+      overview.file.path <- file.path(res_path, name, paste0(name, "_overview.txt"))
+      
+      # Debug: Check if the file exists
+      if (!file.exists(overview.file.path)) {
+        message("File does not exist: ", overview.file.path)
+        return(NULL)
+      }
+      
+      # Read the file into a tibble
+      overview.df <- read_tsv(overview.file.path, col_names = TRUE)
+      
+      # Debug: Print the first few rows of the dataframe
+      message("First few rows of ", overview.file.path, ":")
+      print(head(overview.df))
+      
+      # Rename columns
+      overview.df <- overview.df %>%
+        rename_with(~str_replace_all(.x, c("_footprints_bound" = "_bound", "_footprints_score" = "_score"))) %>%
+        mutate(start = TFBS_start + 1) %>%
+        select(TFBS_chr, start, TFBS_end, TFBS_strand, everything())
+      
+      # Rename specific columns
+      colnames(overview.df) <- str_replace_all(colnames(overview.df), c(
+        "TFBS_chr" = "seqnames",
+        "TFBS_start" = "start",
+        "TFBS_end" = "end",
+        "TFBS_strand" = "strand"
+      ))
+      
+      return(overview.df)
+    }, error = function(e) {
+      message("Error processing folder ", name, ": ", e$message)
+      return(NULL)
+    })
+  }
+  
+  # Process directories, either in parallel or sequentially
+  if (parallel) {
+    out_list <- mclapply(motif.res.folders, process_folder, mc.cores = mc.cores)
+  } else {
+    out_list <- lapply(motif.res.folders, process_folder)
+  }
+  
+  # Debug: Check the structure of out_list
+  message("Processed folders: ", length(out_list))
+  
+  # Remove NULL elements from the list
+  out_list <- out_list[!sapply(out_list, is.null)]
+  names(out_list) <- motif.res.folders[!sapply(out_list, is.null)]
+  
+  # Debug: Check the structure of out_list after filtering NULLs
+  message("Non-NULL processed folders: ", length(out_list))
+  
+  # Combine all tibbles into one
+  combined_tb <- bind_rows(out_list, .id = "source")
+  
+  return(combined_tb)
+}
+
+
 get_BINDetect_snakemake_results_gr <- function(res_path,parallel=F, mc.cores=NULL, HOCOMOCO=11){
   
   #'@param res_path (str): Path to the folder where TOBIAS BINDetect results are stored
@@ -870,6 +956,41 @@ extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.d
   if (!full.data){
     factors.out <- data.tmp.1 %>% distinct(TF_gene_name) %>% pull(TF_gene_name)
     return(factors.out)
+  } else {
+    return(data.tmp.1)
+  }
+}
+
+
+fetch.regulators <- function(db.name, gene_name, group_name, zscore.abs.thr=2, full.data=FALSE,acc.thr=0, bound=T){
+  require(dbplyr)
+  require(DBI)
+  con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = db.name)
+  
+  if(!length(group_name)==1){stop("Give only one group_name at the time")}
+  if(!any(group_name %in% c("PRO1_2","CO1_2","GA1_2","GA3_4","GA5_6","GL1_2","GL3_4","GL5"))){stop("group_name must be one of the following: PRO1_2, CO1_2, GA1_2, GA3_4, GA5_6, GL1_2, GL3_4, GL5")}
+  
+  if (!is.null(zscore.abs.thr)){
+    if (bound){
+      query_pos<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.abs.thr,'', sep="")
+      query_neg<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore < -',zscore.abs.thr,'', sep="")
+    } else {
+      query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, acc as ac, links as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND ABS(links.zscore)>',zscore.abs.thr,'', sep="")
+    }
+  } else {
+    print("zscore.thr is NULL, ignoring gene_name and fetching all bound TF events for the group and exp condition")
+    query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, gene_metadata as gm WHERE tb.mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND gm.gene_name="',gene_name,'"', sep="")
+  }
+  data.tmp.1_pos <- as_tibble(dbGetQuery(con.obj, query_pos),.name_repair = "universal")
+  data.tmp.1_neg <- as_tibble(dbGetQuery(con.obj, query_neg),.name_repair = "universal")
+  data.tmp.1_pos <- rename(data.tmp.1_pos, "feature...59"="features")
+  data.tmp.1_neg <- rename(data.tmp.1_neg, "feature...59"="features")
+  data.tmp.1 <- rbind(data.tmp.1_pos,data.tmp.1_neg)
+  data.tmp.1$direction <- ifelse(data.tmp.1$zscore>0,1,-1)
+  data.tmp.1.out <- data.tmp.1 %>% group_by(TF_gene_name, features, direction) %>% summarise(linkpeaks_zscore=mean(zscore),count=n())
+
+  if (!full.data){
+    return(data.tmp.1.out %>% dplyr::select(TF_gene_name,count,features,linkpeaks_zscore,direction))
   } else {
     return(data.tmp.1)
   }
