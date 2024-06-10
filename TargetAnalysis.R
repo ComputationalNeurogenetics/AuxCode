@@ -31,7 +31,7 @@ extract_gene_enrichments <- function(ranks,gene_sets){
 
 drawTargetLinePlot <- function(DEG.res, gene_name2id, gene_id2name, limits.to.plot, cell.groups){
   
-  deg.data <- DEG.res$d1 %>% filter(p_val_adj<0.01) %>% mutate(rank = row_number()) %>% select(ensg_id,rank,matches("exp_avg_log2$")) %>% pivot_longer(cols = where(is.double), names_to = "cell_group", values_to = "exp_avg_log2")
+  deg.data <- DEG.res$d1 %>% filter(p_val_adj<0.01) %>% mutate(rank = row_number()) %>% dplyr::select(ensg_id,rank,matches("exp_avg_log2$")) %>% pivot_longer(cols = where(is.double), names_to = "cell_group", values_to = "exp_avg_log2")
   
   limits.to.plot <- DEG.res$limits
   upper.limit=limits.to.plot$upper.limit
