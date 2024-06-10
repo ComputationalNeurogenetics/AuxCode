@@ -983,11 +983,11 @@ fetch.regulators <- function(db.name, gene_name, group_name, zscore.abs.thr=2, f
   }
   data.tmp.1_pos <- as_tibble(dbGetQuery(con.obj, query_pos),.name_repair = "universal")
   data.tmp.1_neg <- as_tibble(dbGetQuery(con.obj, query_neg),.name_repair = "universal")
-  data.tmp.1_pos <- rename(data.tmp.1_pos, "features"="feature...59")
-  data.tmp.1_neg <- rename(data.tmp.1_neg, "features"="feature...59")
+  data.tmp.1_pos <- rename(data.tmp.1_pos, "features...69"="features")
+  data.tmp.1_neg <- rename(data.tmp.1_neg, "features...69"="features")
   data.tmp.1 <- rbind(data.tmp.1_pos,data.tmp.1_neg)
   data.tmp.1$direction <- ifelse(data.tmp.1$zscore>0,1,-1)
-  data.tmp.1.out <- data.tmp.1 %>% group_by(TF_gene_name, features, direction) %>% summarise(linkpeaks_zscore=mean(zscore),count=n())
+  data.tmp.1.out <- data.tmp.1 %>% group_by(TF_gene_name, features, direction) %>% summarise(linkpeaks_zscore=mean(zscore),count=dplyr::n())
 
   if (!full.data){
     return(data.tmp.1.out %>% dplyr::select(TF_gene_name,count,features,linkpeaks_zscore,direction))
