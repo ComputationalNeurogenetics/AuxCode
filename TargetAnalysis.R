@@ -214,5 +214,5 @@ do.GSEA <- function(targets,DEG.res,TF.name, comp.title){
     levels = c("red", "white", "blue")
   )
   
-  return(list(p1=p1,d1=d1,limits=limits))
+  return(list(p1=p1,d1=d1,limits=limits,edges=edges))
 }
