@@ -100,6 +100,9 @@ getTargets_SR <- function(TF_name,con){
     COUNT(CASE WHEN li.zscore < 0 THEN 1 ELSE NULL END) AS count_zscore_negative,
     COUNT(DISTINCT li.feature) AS count_distinct_feature,
     COUNT(li.feature) AS count_feature,
+    SUM(SR1_bound) as sum_SR1_bound,
+    SUM(SR2_bound) as sum_SR2_bound,
+    SUM(SR3_bound) as sum_SR3_bound,
     AVG(tb.SR1_score) AS SR1_score_average,
     AVG(tb.SR2_score) AS SR2_score_average,
     AVG(tb.SR3_score) AS SR3_score_average,
@@ -120,8 +123,7 @@ WHERE
     AND (tb.SR1_bound = 1 OR tb.SR2_bound = 1 OR tb.SR3_bound = 1)
     AND tb.w_mean_cons > 0.5
 GROUP BY 
-    gm.gene_name;",
-                       sep="")
+    gm.gene_name;", sep="")
   
   target.data <- as_tibble(dbGetQuery(con, targetQuery))
   targets <- unique(pull(target.data, gene_name))
@@ -137,6 +139,8 @@ getTargets_rV2 <- function(TF_name,con){
     COUNT(CASE WHEN li.zscore < 0 THEN 1 ELSE NULL END) AS count_zscore_negative,
     COUNT(DISTINCT li.feature) AS count_distinct_feature,
     COUNT(li.feature) AS count_feature,
+    SUM(GA1_2_bound) as sum_GA1_2_bound,
+    SUM(GL1_2_bound) as sum_GL1_2_bound,
     AVG(tb.PRO1_2_score) AS PRO1_2_score_average,
     AVG(tb.CO1_2_score) AS CO1_2_score_average,
     AVG(tb.GA1_2_score) AS GA1_2_score_average,
@@ -158,8 +162,7 @@ WHERE
     AND (tb.GA1_2_bound = 1 OR tb.GL1_2_bound = 1)
     AND tb.w_mean_cons > 0.5
 GROUP BY 
-    gm.gene_name;",
-                       sep="")
+    gm.gene_name;", sep="")
   
   target.data <- as_tibble(dbGetQuery(con, targetQuery))
   targets <- unique(pull(target.data, gene_name))
