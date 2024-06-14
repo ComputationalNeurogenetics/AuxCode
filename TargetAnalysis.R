@@ -113,7 +113,11 @@ getTargets_SR <- function(TF_name,con){
 FROM 
     links_s AS li
     JOIN tobias AS tb ON tb.features = li.feature
-    JOIN CT_data AS ct ON ct.feature = tb.features
+    JOIN (
+        SELECT DISTINCT feature, target_gene_name
+        FROM CT_data
+        WHERE target_gene_name = '", TF_name, "'
+      ) AS ct ON ct.feature = tb.features
     JOIN gene_metadata AS gm ON gm.ensg_id = li.ensg_id
 WHERE
     tb.TF_gene_name = '",toupper(TF_name),"'
@@ -152,7 +156,11 @@ getTargets_rV2 <- function(TF_name,con){
 FROM 
     links_s AS li
     JOIN tobias AS tb ON tb.features = li.feature
-    JOIN CT_data AS ct ON ct.feature = tb.features
+      JOIN (
+        SELECT DISTINCT feature, target_gene_name
+        FROM CT_data
+        WHERE target_gene_name = '", TF_name, "'
+      ) AS ct ON ct.feature = tb.features
     JOIN gene_metadata AS gm ON gm.ensg_id = li.ensg_id
 WHERE
     tb.TF_gene_name = '",toupper(TF_name),"'
