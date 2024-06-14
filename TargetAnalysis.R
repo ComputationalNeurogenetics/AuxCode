@@ -111,7 +111,7 @@ getTargets_SR <- function(TF_name,con){
     AVG(tb.SR1_score) / NULLIF(AVG(tb.SR2_score), 0) AS SR1_SR_2_FT_ratio,
     AVG(tb.SR2_score) / NULLIF(AVG(tb.SR3_score), 0) AS SR2_SR_3_FT_ratio
 FROM 
-    links AS li
+    links_s AS li
     JOIN tobias AS tb ON tb.features = li.feature
     JOIN CT_data AS ct ON ct.feature = tb.features
     JOIN gene_metadata AS gm ON gm.ensg_id = li.ensg_id
