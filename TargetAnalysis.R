@@ -178,6 +178,50 @@ GROUP BY
   return(list(targets_gene_name=targets, targets_gene.id=targets_gene_id, target.data=target.data))
 }
 
+getTargets_rV2_TFBS_level <- function(TF_name,con, motif){
+  targetQuery <- paste("SELECT 
+    gm.gene_name,
+    gm.ensg_id,
+    COUNT(CASE WHEN li.zscore > 0 THEN 1 ELSE NULL END) AS count_zscore_positive,
+    COUNT(CASE WHEN li.zscore < 0 THEN 1 ELSE NULL END) AS count_zscore_negative,
+    COUNT(DISTINCT li.feature) AS count_distinct_feature,
+    COUNT(li.feature) AS count_feature,
+    SUM(GA1_2_bound) as sum_GA1_2_bound,
+    SUM(GL1_2_bound) as sum_GL1_2_bound,
+    AVG(tb.PRO1_2_score) AS PRO1_2_score_average,
+    AVG(tb.CO1_2_score) AS CO1_2_score_average,
+    AVG(tb.GA1_2_score) AS GA1_2_score_average,
+    AVG(tb.GL1_2_score) AS GL1_2_score_average,
+    AVG(tb.GA1_2_score) -  AVG(tb.PRO1_2_score) AS PRO1_2_GA_increase,
+    AVG(tb.GL1_2_score) -  AVG(tb.PRO1_2_score) AS PRO1_2_GL_increase,
+    AVG(tb.GA1_2_score) / NULLIF(AVG(tb.PRO1_2_score), 0) AS PRO1_2_GA_FT_ratio,
+    AVG(tb.GL1_2_score) / NULLIF(AVG(tb.PRO1_2_score), 0) AS PRO1_2_GL_FT_ratio
+FROM 
+    links_s AS li
+    JOIN tobias AS tb ON tb.features = li.feature
+      JOIN (
+        SELECT DISTINCT feature, target_gene_name
+        FROM CT_data
+        WHERE target_gene_name = '", TF_name, "'
+      ) AS ct ON ct.feature = tb.features
+    JOIN gene_metadata AS gm ON gm.ensg_id = li.ensg_id
+WHERE
+    tb.TF_gene_name = '",toupper(TF_name),"'
+    AND ABS(li.zscore) > 2 
+    AND li.pvalue < 0.01 
+    AND ct.target_gene_name = '",TF_name,"'
+    AND (tb.GA1_2_bound = 1 OR tb.GL1_2_bound = 1)
+    AND tb.w_mean_cons > 0.5
+    AND tb.TFBS_name='",motif,"'
+GROUP BY 
+    tb.gene_name;", sep="")
+  
+  target.data <- as_tibble(dbGetQuery(con, targetQuery))
+  targets <- unique(pull(target.data, gene_name))
+  targets_gene_id <- unique(pull(target.data, ensg_id))
+  return(list(targets_gene_name=targets, targets_gene.id=targets_gene_id, target.data=target.data))
+}
+
 do.GSEA <- function(targets,DEG.res,TF.name, comp.title){
   # lower.thr <- .25
   # upper.thr <- .75
