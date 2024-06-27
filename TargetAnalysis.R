@@ -93,6 +93,11 @@ mean.fxn <- function (x,pseudocount.use=1, base=2)
 
 
 getTargets_SR <- function(TF_name,con){
+  if (TF_name!="Tal1"){
+  dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
+  dbExecute(con, paste("CREATE TEMP TABLE filtered_tobias AS
+    SELECT * FROM Tobias WHERE TF_gene_name = '",toupper(TF_name),"';",sep=""))
+  
   targetQuery <- paste("SELECT 
     gm.gene_name,
     gm.ensg_id,
@@ -112,8 +117,8 @@ getTargets_SR <- function(TF_name,con){
     AVG(tb.SR2_score) / NULLIF(AVG(tb.SR3_score), 0) AS SR2_SR_3_FT_ratio
 FROM 
     links_s AS li
-    JOIN tobias AS tb ON tb.features = li.feature
-    JOIN (
+    JOIN filtered_tobias AS tb ON tb.features = li.feature
+      JOIN (
         SELECT DISTINCT feature, target_gene_name
         FROM CT_data
         WHERE target_gene_name = '", TF_name, "'
@@ -123,11 +128,71 @@ WHERE
     tb.TF_gene_name = '",toupper(TF_name),"'
     AND ABS(li.zscore) > 2 
     AND li.pvalue < 0.01 
-    AND ct.target_gene_name = '",TF_name,"'
     AND (tb.SR1_bound = 1 OR tb.SR2_bound = 1 OR tb.SR3_bound = 1)
     AND tb.w_mean_cons > 0.5
 GROUP BY 
     gm.gene_name;", sep="")
+  } else if (TF_name=="Tal1") {
+    dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
+    dbExecute(con, "CREATE TEMP TABLE filtered_tobias AS
+SELECT 
+    *,
+    (CASE 
+        WHEN TFBS_name = 'TAL1.H12CORE.0.P.B_TAL1.H12CORE.0.P.B' THEN 1 
+        ELSE 0 
+     END) AS cond_0,
+    (CASE 
+        WHEN TFBS_name = 'TAL1.H12CORE.1.P.B_TAL1.H12CORE.1.P.B' THEN 1 
+        ELSE 0 
+     END) AS cond_1,
+    (CASE 
+        WHEN TFBS_name = 'TAL1.H12CORE.2.P.B_TAL1.H12CORE.2.P.B' THEN 1 
+        ELSE 0 
+     END) AS cond_2
+FROM Tobias
+WHERE TF_gene_name = 'TAL1'
+  AND (TFBS_name IN ('TAL1.H12CORE.0.P.B_TAL1.H12CORE.0.P.B', 
+                     'TAL1.H12CORE.1.P.B_TAL1.H12CORE.1.P.B', 
+                     'TAL1.H12CORE.2.P.B_TAL1.H12CORE.2.P.B'));")
+    
+    targetQuery <- "SELECT 
+    gm.gene_name,
+    gm.ensg_id,
+    COUNT(CASE WHEN li.zscore > 0 THEN 1 ELSE NULL END) AS count_zscore_positive,
+    COUNT(CASE WHEN li.zscore < 0 THEN 1 ELSE NULL END) AS count_zscore_negative,
+    COUNT(DISTINCT li.feature) AS count_distinct_feature,
+    COUNT(li.feature) AS count_feature,
+    SUM(SR1_bound) as sum_SR1_bound,
+    SUM(SR2_bound) as sum_SR2_bound,
+    SUM(SR3_bound) as sum_SR3_bound,
+    AVG(tb.SR1_score) AS SR1_score_average,
+    AVG(tb.SR2_score) AS SR2_score_average,
+    AVG(tb.SR3_score) AS SR3_score_average,
+    AVG(tb.SR1_score) -  AVG(tb.SR2_score) AS SR1_SR2_increase,
+    AVG(tb.SR2_score) -  AVG(tb.SR3_score) AS SR2_SR3_increase,
+    AVG(tb.SR1_score) / NULLIF(AVG(tb.SR2_score), 0) AS SR1_SR_2_FT_ratio,
+    AVG(tb.SR2_score) / NULLIF(AVG(tb.SR3_score), 0) AS SR2_SR_3_FT_ratio,
+    SUM(cond_0) AS TAL1_H12CORE_0_P_B_count,
+    SUM(cond_1) AS TAL1_H12CORE_1_P_B_count,
+    SUM(cond_2) AS TAL1_H12CORE_2_P_B_count
+FROM 
+    links_s AS li
+    JOIN filtered_tobias AS tb ON tb.features = li.feature
+      JOIN (
+        SELECT DISTINCT feature, target_gene_name
+        FROM CT_data
+        WHERE target_gene_name = 'Tal1'
+      ) AS ct ON ct.feature = tb.features
+    JOIN gene_metadata AS gm ON gm.ensg_id = li.ensg_id
+WHERE
+    tb.TF_gene_name = 'TAL1'
+    AND ABS(li.zscore) > 2 
+    AND li.pvalue < 0.01 
+    AND (tb.SR1_bound = 1 OR tb.SR2_bound = 1 OR tb.SR3_bound = 1)
+    AND tb.w_mean_cons > 0.5
+GROUP BY 
+    gm.gene_name;"
+  }
   
   target.data <- as_tibble(dbGetQuery(con, targetQuery))
   targets <- unique(pull(target.data, gene_name))
@@ -136,6 +201,11 @@ GROUP BY
 }
 
 getTargets_rV2 <- function(TF_name,con){
+  if (TF_name!="Tal1"){
+    dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
+    dbExecute(con, paste("CREATE TEMP TABLE filtered_tobias AS
+    SELECT * FROM Tobias WHERE TF_gene_name = '",toupper(TF_name),"';",sep=""))
+    
   targetQuery <- paste("SELECT 
     gm.gene_name,
     gm.ensg_id,
@@ -155,7 +225,7 @@ getTargets_rV2 <- function(TF_name,con){
     AVG(tb.GL1_2_score) / NULLIF(AVG(tb.PRO1_2_score), 0) AS PRO1_2_GL_FT_ratio
 FROM 
     links_s AS li
-    JOIN tobias AS tb ON tb.features = li.feature
+    JOIN filtered_tobias AS tb ON tb.features = li.feature
       JOIN (
         SELECT DISTINCT feature, target_gene_name
         FROM CT_data
@@ -166,20 +236,35 @@ WHERE
     tb.TF_gene_name = '",toupper(TF_name),"'
     AND ABS(li.zscore) > 2 
     AND li.pvalue < 0.01 
-    AND ct.target_gene_name = '",TF_name,"'
     AND (tb.GA1_2_bound = 1 OR tb.GL1_2_bound = 1)
     AND tb.w_mean_cons > 0.5
 GROUP BY 
     gm.gene_name;", sep="")
-  
-  target.data <- as_tibble(dbGetQuery(con, targetQuery))
-  targets <- unique(pull(target.data, gene_name))
-  targets_gene_id <- unique(pull(target.data, ensg_id))
-  return(list(targets_gene_name=targets, targets_gene.id=targets_gene_id, target.data=target.data))
-}
-
-getTargets_rV2_TFBS_level <- function(TF_name,con, motif){
-  targetQuery <- paste("SELECT 
+  }
+  else if (TF_name=="Tal1") {
+    dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
+    dbExecute(con, "CREATE TEMP TABLE filtered_tobias AS
+SELECT 
+    *,
+    (CASE 
+        WHEN TFBS_name = 'TAL1.H12CORE.0.P.B_TAL1.H12CORE.0.P.B' THEN 1 
+        ELSE 0 
+     END) AS cond_0,
+    (CASE 
+        WHEN TFBS_name = 'TAL1.H12CORE.1.P.B_TAL1.H12CORE.1.P.B' THEN 1 
+        ELSE 0 
+     END) AS cond_1,
+    (CASE 
+        WHEN TFBS_name = 'TAL1.H12CORE.2.P.B_TAL1.H12CORE.2.P.B' THEN 1 
+        ELSE 0 
+     END) AS cond_2
+FROM Tobias
+WHERE TF_gene_name = 'TAL1'
+  AND (TFBS_name IN ('TAL1.H12CORE.0.P.B_TAL1.H12CORE.0.P.B', 
+                     'TAL1.H12CORE.1.P.B_TAL1.H12CORE.1.P.B', 
+                     'TAL1.H12CORE.2.P.B_TAL1.H12CORE.2.P.B'));")
+    
+    targetQuery <- "SELECT 
     gm.gene_name,
     gm.ensg_id,
     COUNT(CASE WHEN li.zscore > 0 THEN 1 ELSE NULL END) AS count_zscore_positive,
@@ -195,27 +280,29 @@ getTargets_rV2_TFBS_level <- function(TF_name,con, motif){
     AVG(tb.GA1_2_score) -  AVG(tb.PRO1_2_score) AS PRO1_2_GA_increase,
     AVG(tb.GL1_2_score) -  AVG(tb.PRO1_2_score) AS PRO1_2_GL_increase,
     AVG(tb.GA1_2_score) / NULLIF(AVG(tb.PRO1_2_score), 0) AS PRO1_2_GA_FT_ratio,
-    AVG(tb.GL1_2_score) / NULLIF(AVG(tb.PRO1_2_score), 0) AS PRO1_2_GL_FT_ratio
+    AVG(tb.GL1_2_score) / NULLIF(AVG(tb.PRO1_2_score), 0) AS PRO1_2_GL_FT_ratio,
+    SUM(cond_0) AS TAL1_H12CORE_0_P_B_count,
+    SUM(cond_1) AS TAL1_H12CORE_1_P_B_count,
+    SUM(cond_2) AS TAL1_H12CORE_2_P_B_count
 FROM 
     links_s AS li
-    JOIN tobias AS tb ON tb.features = li.feature
-      JOIN (
+    JOIN filtered_tobias AS tb ON tb.features = li.feature
+    JOIN (
         SELECT DISTINCT feature, target_gene_name
         FROM CT_data
-        WHERE target_gene_name = '", TF_name, "'
-      ) AS ct ON ct.feature = tb.features
+        WHERE target_gene_name = 'Tal1'
+    ) AS ct ON ct.feature = tb.features
     JOIN gene_metadata AS gm ON gm.ensg_id = li.ensg_id
 WHERE
-    tb.TF_gene_name = '",toupper(TF_name),"'
-    AND ABS(li.zscore) > 2 
+    ABS(li.zscore) > 2 
     AND li.pvalue < 0.01 
-    AND ct.target_gene_name = '",TF_name,"'
     AND (tb.GA1_2_bound = 1 OR tb.GL1_2_bound = 1)
     AND tb.w_mean_cons > 0.5
-    AND tb.TFBS_name='",motif,"'
 GROUP BY 
-    tb.gene_name;", sep="")
+    gm.gene_name;"
+  }
   
+  # AND ct.target_gene_name = '",TF_name,"'
   target.data <- as_tibble(dbGetQuery(con, targetQuery))
   targets <- unique(pull(target.data, gene_name))
   targets_gene_id <- unique(pull(target.data, ensg_id))
