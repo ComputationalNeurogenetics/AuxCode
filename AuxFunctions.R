@@ -806,7 +806,7 @@ RenameGenesSeurat_v2 <- function(obj, newnames,assay="RNA") { # Replace gene nam
   print("Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.")
   obj[['RNA_name']] <- obj[[assay]]
   RNA <- obj@assays$RNA_name
-  if (length(RNA@scale.data) > 0){
+  if (length(RNA@layers[["scale.data"]]) > 0){
     tmp.conv <- tibble(id=RNA@counts@Dimnames[[1]], symbol=newnames)
   }
   
