@@ -800,6 +800,27 @@ RenameGenesSeurat <- function(obj, newnames,assay="RNA") { # Replace gene names 
   obj@assays$RNA_name <- RNA
   return(obj)
 }
+
+
+RenameGenesSeurat_v2 <- function(obj, newnames,assay="RNA") { # Replace gene names in different slots of a Seurat object. Run this before integration. Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.
+  print("Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.")
+  obj[['RNA_name']] <- obj[[assay]]
+  RNA <- obj@assays$RNA_name
+  if (length(RNA@scale.data) > 0){
+    tmp.conv <- tibble(id=RNA@counts@Dimnames[[1]], symbol=newnames)
+  }
+  
+  if (nrow(RNA) == length(newnames)) {
+    if (length(RNA@counts) >0 & class(RNA@data)[1]=="dgCMatrix") {RNA@counts@Dimnames[[1]]            <- newnames}
+    if (length(RNA@data) >0 ){ RNA@data@Dimnames[[1]]                <- newnames}
+    if (length(RNA@layers[["scale.data"]]) > 0 & !is.matrix(RNA@layers[["scale.data"]])){RNA@layers[["scale.data"]]@Dimnames[[1]]    <- newnames}
+    if (length(RNA@layers[["scale.data"]]) > 0 & is.matrix(RNA@layers[["scale.data"]])){rownames(RNA@layers[["scale.data"]])    <- tmp.conv$symbol[match(rownames(RNA@layers[["scale.data"]]),tmp.conv$id)]}
+    #if (length(RNA@scale.data)) dimnames(RNA@scale.data)[[1]]    <- tmp.conv$symbol[match(dimnames(RNA@scale.data)[[1]],tmp.conv$id)]
+  } else {"Unequal gene sets: nrow(RNA) != nrow(newnames)"}
+  obj@assays$RNA_name <- RNA
+  return(obj)
+}
+
 # RenameGenesSeurat(obj = SeuratObj, newnames = HGNC.updated.genes)
 
 #
