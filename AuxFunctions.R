@@ -782,9 +782,9 @@ precalculate.matches <- function(db.conn, table.name, features.gr){
 }
 
 
-RenameGenesSeurat <- function(obj, newnames) { # Replace gene names in different slots of a Seurat object. Run this before integration. Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.
+RenameGenesSeurat <- function(obj, newnames,assay="RNA") { # Replace gene names in different slots of a Seurat object. Run this before integration. Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.
   print("Run this before integration. It only changes obj@assays$RNA@counts, @data and @scale.data.")
-  obj[['RNA_name']] <- obj[['RNA']]
+  obj[['RNA_name']] <- obj[[assay]]
   RNA <- obj@assays$RNA_name
   if (length(RNA@scale.data) > 0){
     tmp.conv <- tibble(id=RNA@counts@Dimnames[[1]], symbol=newnames)
