@@ -811,7 +811,7 @@ RenameGenesSeurat_v2 <- function(obj, newnames,assay="RNA") { # Replace gene nam
   }
   
   if (nrow(RNA) == length(newnames)) {
-    if (length(RNA@layers[["counts"]]) >0 & class(RNA@layers[["data"]])[1]=="dgCMatrix") {RNA@layers[["counts"]]@Dimnames[[1]]            <- newnames}
+    if (length(RNA@layers[["counts"]]) >0 & class(RNA@layers[["data"]])[1]=="dgCMatrix") {RNA@layers[["counts"]]@Dimnames[[1]]<- newnames}
     if (length(RNA@layers[["data"]]) >0 ){RNA@layers[["data"]]@Dimnames[[1]] <- newnames}
     if (length(RNA@layers[["scale.data"]]) > 0 & !is.matrix(RNA@layers[["scale.data"]])){RNA@layers[["scale.data"]]@Dimnames[[1]]    <- newnames}
     if (length(RNA@layers[["scale.data"]]) > 0 & is.matrix(RNA@layers[["scale.data"]])){rownames(RNA@layers[["scale.data"]])    <- tmp.conv$symbol[match(rownames(RNA@layers[["scale.data"]]),tmp.conv$id)]}
