@@ -309,6 +309,48 @@ GROUP BY
   return(list(targets_gene_name=targets, targets_gene.id=targets_gene_id, target.data=target.data))
 }
 
+getTargets_rV2_feature_level <- function(TF_name,con){
+    dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
+    dbExecute(con, paste("CREATE TEMP TABLE filtered_tobias AS
+    SELECT * FROM Tobias WHERE TF_gene_name = '",toupper(TF_name),"';",sep=""))
+    
+    targetQuery <- paste("SELECT 
+    gm.gene_name,
+    gm.ensg_id,
+    tb.TFBS_name,
+    li.feature AS feature,
+    GA1_2_bound as GA1_2_bound,
+    GL1_2_bound as GL1_2_bound,
+    tb.PRO1_2_score,
+    tb.CO1_2_score,
+    tb.GA1_2_score,
+    tb.GL1_2_score,
+    tb.GA1_2_score -  tb.PRO1_2_score AS PRO1_2_GA_increase,
+    tb.GL1_2_score -  tb.PRO1_2_score AS PRO1_2_GL_increase,
+    tb.GA1_2_score / NULLIF(tb.PRO1_2_score, 0) AS PRO1_2_GA_FT_ratio,
+    tb.GL1_2_score / NULLIF(tb.PRO1_2_score, 0) AS PRO1_2_GL_FT_ratio
+FROM 
+    links_s AS li
+    JOIN filtered_tobias AS tb ON tb.features = li.feature
+      JOIN (
+        SELECT DISTINCT feature, target_gene_name
+        FROM CT_data
+        WHERE target_gene_name = '", TF_name, "'
+      ) AS ct ON ct.feature = tb.features
+    JOIN gene_metadata AS gm ON gm.ensg_id = li.ensg_id
+WHERE
+    tb.TF_gene_name = '",toupper(TF_name),"'
+    AND ABS(li.zscore) > 2 
+    AND li.pvalue < 0.01 
+    AND (tb.GA1_2_bound = 1 OR tb.GL1_2_bound = 1)
+    AND tb.w_mean_cons > 0.5", sep="")
+
+  target.data <- as_tibble(dbGetQuery(con, targetQuery))
+  targets <- unique(pull(target.data, gene_name))
+  targets_gene_id <- unique(pull(target.data, ensg_id))
+  return(list(targets_gene_name=targets, targets_gene.id=targets_gene_id, target.data=target.data))
+}
+
 do.GSEA <- function(targets,DEG.res,TF.name, comp.title){
   # lower.thr <- .25
   # upper.thr <- .75
