@@ -330,7 +330,8 @@ getTargets_rV2_feature_level <- function(TF_name,con){
     tb.GA1_2_score / NULLIF(tb.PRO1_2_score, 0) AS PRO1_2_GA_FT_ratio,
     tb.GL1_2_score / NULLIF(tb.PRO1_2_score, 0) AS PRO1_2_GL_FT_ratio,
     li.zscore,
-    li.end - li.start AS feature_center
+    ABS((li.end - li.start)-gm.TSS_start) AS linkage_dist
+    
 FROM 
     links_s AS li
     JOIN filtered_tobias AS tb ON tb.features = li.feature
