@@ -550,48 +550,52 @@ add_TE_to_tibble <- function(input_tibble, te_results_list) {
   return(input_tibble_with_te)
 }
 
-# Step 2: Process the input_tibble with a user-specified TF and include the Gata overlap logic for Tal1
+# Define the function to process TF targets with optimized thresholds
 process_TF_targets_with_TE <- function(input_tibble_with_te, TF) {
   
   # Filter based on the specified TF
   filtered_targets <- input_tibble_with_te %>%
     filter(TF == !!TF)
   
-  # Classify genes based on the usual parameters (binding, expression, TE, etc.)
+  # Classify genes based on TE results, correlations, and log2FC
   filtered_targets <- filtered_targets %>%
     mutate(
       regulation = case_when(
-        zscore > 0 & avg_log2FC > 0 ~ "Activation",  # TF likely activates this gene
-        zscore < 0 & avg_log2FC < 0 ~ "Repression",  # TF likely represses this gene
-        TRUE ~ "Unknown"                             # Mixed signals, hard to classify
+        zscore > 0 & avg_log2FC > 0.1 ~ "Activation",  # TF likely activates this gene
+        zscore < 0 & avg_log2FC < -0.1 ~ "Repression", # TF likely represses this gene
+        TRUE ~ "Unknown"                               # Mixed or weak signal
       ),
-      causality_present_X_Y = ifelse(X_Y_te_p_value < 0.05, TRUE, FALSE), # X->Y TE significant
-      causality_present_Y_X = ifelse(Y_X_te_p_value < 0.05, TRUE, FALSE), # Y->X TE significant
+      causality_present_X_Y = ifelse(X_Y_te_p_value < 0.05 & X_Y_te_coef > 0.02, TRUE, FALSE), # X->Y TE significant and strong
+      causality_present_Y_X = ifelse(Y_X_te_p_value < 0.05 & Y_X_te_coef > 0.02, TRUE, FALSE), # Y->X TE significant and strong
       TE_relationship = case_when(
         causality_present_X_Y & !causality_present_Y_X ~ "TF->Target",
         causality_present_Y_X & !causality_present_X_Y ~ "Target->TF",
         causality_present_X_Y & causality_present_Y_X ~ "Bidirectional",
         TRUE ~ "No significant TE"
       ),
-      # Gata overlap logic: Only consider Gata2 and Gata3 overlap if the TF is Tal1
-      has_Gata2_overlap = ifelse(TF == "Tal1" & Gata2_ct_overlap > 0, TRUE, FALSE),
-      has_Gata3_overlap = ifelse(TF == "Tal1" & Gata3_ct_overlap > 0, TRUE, FALSE),
-      proximal_binding = ifelse(linkage_kbp <= 50, TRUE, FALSE), # Binding proximity < 50kb
-      expressed_in_GA = ifelse(pct.1 > 0.1, TRUE, FALSE),         # Expression in GA > 10%
-      expressed_in_GL = ifelse(pct.2 > 0.1, TRUE, FALSE),         # Expression in GL > 10%
-      PRO_GA_increase = ifelse(PRO1_2_GA_FT_ratio > 1, TRUE, FALSE),  # Footprint score increase from PRO to GA
-      PRO_GL_increase = ifelse(PRO1_2_GL_FT_ratio > 1, TRUE, FALSE),  # Footprint score increase from PRO to GL
-      strong_TE_X_Y = ifelse(X_Y_te_coef > 0.02, TRUE, FALSE),  # Threshold for X->Y TE coefficient
-      strong_TE_Y_X = ifelse(Y_X_te_coef > 0.02, TRUE, FALSE)   # Threshold for Y->X TE coefficient
+      # Correlation thresholds for PRO-GA and PRO-GL transitions
+      positive_cor_GA = ifelse(TF.cor.PRO.GA > 0.3, TRUE, FALSE),
+      negative_cor_GA = ifelse(TF.cor.PRO.GA < -0.3, TRUE, FALSE),
+      positive_cor_GL = ifelse(TF.cor.PRO.GL > 0.3, TRUE, FALSE),
+      negative_cor_GL = ifelse(TF.cor.PRO.GL < -0.3, TRUE, FALSE),
+      has_Gata2_overlap = ifelse(TF == "Tal1" & Gata2_ct_overlap > 0, TRUE, FALSE), # Tal1-specific Gata2 overlap
+      has_Gata3_overlap = ifelse(TF == "Tal1" & Gata3_ct_overlap > 0, TRUE, FALSE), # Tal1-specific Gata3 overlap
+      proximal_binding = ifelse(linkage_kbp <= 50, TRUE, FALSE),                    # Binding proximity < 50kb
+      expressed_in_GA = ifelse(pct.1 > 0.1, TRUE, FALSE),                           # Expression in GA > 10%
+      expressed_in_GL = ifelse(pct.2 > 0.1, TRUE, FALSE),                           # Expression in GL > 10%
+      PRO_GA_increase = ifelse(PRO1_2_GA_FT_ratio > 1, TRUE, FALSE),                # Footprint increase PRO->GA
+      PRO_GL_increase = ifelse(PRO1_2_GL_FT_ratio > 1, TRUE, FALSE)                 # Footprint increase PRO->GL
     )
   
-  # Define a function to query genes based on various conditions, including TE coefficients and lineage focus
+  # Query function that incorporates thresholds for TE, correlation, and log2FC
   query_TF_targets <- function(type = c("Activation", "Repression"),
                                te_direction = NULL, condition = NULL,
                                Gata2_overlap = NULL, Gata3_overlap = NULL,
                                proximal_binding = NULL, PRO_GA_increase = NULL,
                                PRO_GL_increase = NULL, expressed_in_GA = NULL,
-                               expressed_in_GL = NULL, strong_TE = NULL, lineage_focus = NULL) {
+                               expressed_in_GL = NULL, strong_TE = NULL, lineage_focus = NULL,
+                               positive_cor_GA = NULL, negative_cor_GA = NULL,
+                               positive_cor_GL = NULL, negative_cor_GL = NULL) {
     
     # Start with basic filtering on activation/repression
     query_result <- filtered_targets %>%
@@ -651,10 +655,10 @@ process_TF_targets_with_TE <- function(input_tibble_with_te, TF) {
     if (!is.null(strong_TE)) {
       if (strong_TE == "X_Y") {
         query_result <- query_result %>%
-          filter(strong_TE_X_Y == TRUE)
+          filter(causality_present_X_Y == TRUE)
       } else if (strong_TE == "Y_X") {
         query_result <- query_result %>%
-          filter(strong_TE_Y_X == TRUE)
+          filter(causality_present_Y_X == TRUE)
       }
     }
     
@@ -667,6 +671,24 @@ process_TF_targets_with_TE <- function(input_tibble_with_te, TF) {
         query_result <- query_result %>%
           filter(PRO_GL_increase == TRUE)
       }
+    }
+    
+    # Add filtering for positive or negative correlations in GA or GL
+    if (!is.null(positive_cor_GA)) {
+      query_result <- query_result %>%
+        filter(positive_cor_GA == positive_cor_GA)
+    }
+    if (!is.null(negative_cor_GA)) {
+      query_result <- query_result %>%
+        filter(negative_cor_GA == negative_cor_GA)
+    }
+    if (!is.null(positive_cor_GL)) {
+      query_result <- query_result %>%
+        filter(positive_cor_GL == positive_cor_GL)
+    }
+    if (!is.null(negative_cor_GL)) {
+      query_result <- query_result %>%
+        filter(negative_cor_GL == negative_cor_GL)
     }
     
     return(query_result)
