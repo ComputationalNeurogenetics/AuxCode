@@ -310,9 +310,11 @@ GROUP BY
 }
 
 getTargets_rV2_feature_level <- function(TF_name,con){
+    TF_name.tobias <- TF_name
+    if (TF_name=="Ebf1"){TF_name.tobias<-"COE1"}
     dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
     dbExecute(con, paste("CREATE TEMP TABLE filtered_tobias AS
-    SELECT * FROM Tobias WHERE TF_gene_name = '",toupper(TF_name),"';",sep=""))
+    SELECT * FROM Tobias WHERE TF_gene_name = '",toupper(TF_name.tobias),"';",sep=""))
     
     targetQuery <- paste("SELECT 
     gm.gene_name,
@@ -330,7 +332,7 @@ getTargets_rV2_feature_level <- function(TF_name,con){
     tb.GA1_2_score / NULLIF(tb.PRO1_2_score, 0) AS PRO1_2_GA_FT_ratio,
     tb.GL1_2_score / NULLIF(tb.PRO1_2_score, 0) AS PRO1_2_GL_FT_ratio,
     li.zscore,
-    ABS((li.end - li.start)-gm.TSS_start) AS linkage_dist
+    ABS(((li.end+li.start)/2)-gm.TSS_start) AS linkage_dist
     
 FROM 
     links_s AS li
@@ -342,7 +344,7 @@ FROM
       ) AS ct ON ct.feature = tb.features
     JOIN gene_metadata AS gm ON gm.ensg_id = li.ensg_id
 WHERE
-    tb.TF_gene_name = '",toupper(TF_name),"'
+    tb.TF_gene_name = '",toupper(TF_name.tobias),"'
     AND ABS(li.zscore) > 2 
     AND li.pvalue < 0.01 
     AND (tb.GA1_2_bound = 1 OR tb.GL1_2_bound = 1)
@@ -403,3 +405,277 @@ do.GSEA <- function(targets,DEG.res,TF.name, comp.title){
   
   return(list(p1=p1,d1=d1,limits=limits,edges=edges))
 }
+# Define the function
+plot_heatmap_with_variability <- function(
+    gene_list,            # List of gene names (e.g., Tal1.causal.targets)
+    combined_tibble,      # Dataframe with the target information
+    rna_data,             # Matrix of RNA expression data
+    gene_id2name,         # A named vector to map gene IDs to gene names
+    TF,                   # Required argument: TF to filter on (e.g., "Tal1")
+    zscore_condition = "> 0", # User-defined zscore condition (e.g., "> 0" or "< 0")
+    custom_filter = NULL, # Optional character string for additional filter (e.g., "& Gata2_ct_overlap == 0 & Gata3_ct_overlap == 0")
+    filter_threshold = 1.2, # RNA expression filter threshold
+    output_file = "heatmap_with_variability.pdf", # Output file for the heatmap
+    column_samples = c("PRO1","PRO2","CO1","CO2","GA1","GA2","GA3","GA4","GA5","GA6","GL1","GL2","GL3","GL4","GL5"), # Column names (samples) to plot
+    bin_ranges = c("0-5 kbp", "> 5 kbp - 50 kbp", "> 50 kbp") # Bin ranges for splitting rows
+) {
+  
+  # Construct the filter expression dynamically, incorporating the zscore_condition
+  filter_expression <- paste0("TF == '", TF, "' & zscore ", zscore_condition)
+  
+  # Add the custom filter string if provided
+  if (!is.null(custom_filter)) {
+    filter_expression <- paste0(filter_expression, " ", custom_filter)
+  }
+  
+  # Filter the combined_tibble using the dynamically constructed filter expression
+  pos.targets <- combined_tibble %>%
+    filter(eval(parse(text = filter_expression))) # Dynamically evaluates the filtering
+  
+  # Group and mutate for bin_category
+  pos.targets <- pos.targets %>%
+    group_by(ensg_id) %>%
+    summarize(linkage_kbp = min(linkage_kbp)) %>%
+    mutate(bin_category = case_when(
+      linkage_kbp <= 5 ~ bin_ranges[1],
+      linkage_kbp > 5 & linkage_kbp <= 50 ~ bin_ranges[2],
+      linkage_kbp > 50 ~ bin_ranges[3]
+    )) %>%
+    ungroup()
+  
+  # Filter expressed genes for heatmap
+  exp.filt <- rownames(rna_data[rowSums(rna_data > filter_threshold) > 0,])
+  pos.targets <- pos.targets %>% filter(ensg_id %in% exp.filt)
+  
+  # Data to plot (log transformed RNA expression)
+  data2plot <- log1p(rna_data[pos.targets$ensg_id, column_samples])
+  
+  # Set gene names as row names
+  rownames(data2plot) <- sapply(rownames(data2plot), function(g) { gene_id2name[[g]] })
+  
+  # Calculate variability (standard deviation) per gene
+  gene_variability <- apply(data2plot, 1, sd)
+  
+  # Ensure the row order of data2plot and pos.targets matches, add variability to pos.targets
+  pos.targets <- pos.targets %>%
+    mutate(gene_name = sapply(ensg_id, function(g) { gene_id2name[[g]] })) %>%
+    filter(gene_name %in% rownames(data2plot)) %>%
+    arrange(factor(gene_name, levels = rownames(data2plot))) %>%
+    mutate(variability = gene_variability[match(gene_name, rownames(data2plot))])
+  
+  # Ensure that gene_variability matches the row names of data2plot
+  gene_variability <- gene_variability[match(rownames(data2plot), names(gene_variability))]
+  
+  # Calculate average variability per bin_category
+  avg_variability_by_bin <- pos.targets %>%
+    group_by(bin_category) %>%
+    summarise(avg_variability = mean(variability, na.rm = TRUE))
+  
+  # Append average variability to bin_category names
+  pos.targets <- pos.targets %>%
+    left_join(avg_variability_by_bin, by = "bin_category") %>%
+    mutate(bin_category_label = paste0(bin_category, " (Avg Var: ", round(avg_variability, 3), ")"))
+  
+  # Create row annotation (binary and variability)
+  row_annotation <- rowAnnotation(
+    Causal_Target = anno_simple(as.integer(rownames(data2plot) %in% gene_list), col = c("0" = "white", "1" = "green")),
+    Variability = anno_simple(gene_variability, col = colorRamp2(c(min(gene_variability), max(gene_variability)), c("blue", "red")))
+  )
+  
+  # Color scale for the heatmap
+  color_scale <- colorRamp2(c(min(data2plot), max(data2plot)), c("white", "red"))
+  
+  # Plot the heatmap
+  pdf(file = output_file, width = 10, height = 25)
+  h1 <- Heatmap(
+    data2plot,
+    name = "RNA expression",
+    row_split = pos.targets$bin_category_label,  # Use modified bin_category labels with variability
+    cluster_rows = TRUE,                         # Cluster rows within each bin_category
+    cluster_columns = FALSE,                     # Remove column clustering
+    show_row_names = TRUE,                       # Show row names
+    show_column_names = TRUE,                    # Show column names
+    clustering_distance_rows = "euclidean",
+    row_names_gp = gpar(fontsize = 6),
+    clustering_method_rows = "ward.D2",
+    col = color_scale,
+    left_annotation = row_annotation              # Add row annotation to the heatmap
+  )
+  print(h1)
+  dev.off()
+}
+
+
+# Step 1: Adding Transfer Entropy Results to the input_tibble
+add_TE_to_tibble <- function(input_tibble, te_results_list) {
+  # Create a dataframe to hold TE results
+  te_df <- do.call(rbind, lapply(names(te_results_list), function(gene) {
+    te_res <- te_results_list[[gene]]$coef
+    data.frame(
+      ensg_id = gene,
+      X_Y_te_p_value = te_res["X->Y", "p-value"],
+      Y_X_te_p_value = te_res["Y->X", "p-value"],
+      X_Y_te_coef = te_res["X->Y", "te"],
+      Y_X_te_coef = te_res["Y->X", "te"],
+      stringsAsFactors = FALSE
+    )
+  }))
+  
+  # Merge TE results with the original tibble by ensg_id
+  input_tibble_with_te <- input_tibble %>%
+    left_join(te_df, by = "ensg_id")
+  
+  return(input_tibble_with_te)
+}
+
+# Step 1: Adding Transfer Entropy Results to the input_tibble
+add_TE_to_tibble <- function(input_tibble, te_results_list) {
+  # Create a dataframe to hold TE results
+  te_df <- do.call(rbind, lapply(names(te_results_list), function(gene) {
+    te_res <- te_results_list[[gene]]$coef
+    data.frame(
+      ensg_id = gene,
+      X_Y_te_p_value = te_res["X->Y", "p-value"],
+      Y_X_te_p_value = te_res["Y->X", "p-value"],
+      X_Y_te_coef = te_res["X->Y", "te"],
+      Y_X_te_coef = te_res["Y->X", "te"],
+      stringsAsFactors = FALSE
+    )
+  }))
+  
+  # Merge TE results with the original tibble by ensg_id
+  input_tibble_with_te <- input_tibble %>%
+    left_join(te_df, by = "ensg_id")
+  
+  return(input_tibble_with_te)
+}
+
+# Step 2: Process the input_tibble with a user-specified TF and include the Gata overlap logic for Tal1
+process_TF_targets_with_TE <- function(input_tibble_with_te, TF) {
+  
+  # Filter based on the specified TF
+  filtered_targets <- input_tibble_with_te %>%
+    filter(TF == !!TF)
+  
+  # Classify genes based on the usual parameters (binding, expression, TE, etc.)
+  filtered_targets <- filtered_targets %>%
+    mutate(
+      regulation = case_when(
+        zscore > 0 & avg_log2FC > 0 ~ "Activation",  # TF likely activates this gene
+        zscore < 0 & avg_log2FC < 0 ~ "Repression",  # TF likely represses this gene
+        TRUE ~ "Unknown"                             # Mixed signals, hard to classify
+      ),
+      causality_present_X_Y = ifelse(X_Y_te_p_value < 0.05, TRUE, FALSE), # X->Y TE significant
+      causality_present_Y_X = ifelse(Y_X_te_p_value < 0.05, TRUE, FALSE), # Y->X TE significant
+      TE_relationship = case_when(
+        causality_present_X_Y & !causality_present_Y_X ~ "TF->Target",
+        causality_present_Y_X & !causality_present_X_Y ~ "Target->TF",
+        causality_present_X_Y & causality_present_Y_X ~ "Bidirectional",
+        TRUE ~ "No significant TE"
+      ),
+      # Gata overlap logic: Only consider Gata2 and Gata3 overlap if the TF is Tal1
+      has_Gata2_overlap = ifelse(TF == "Tal1" & Gata2_ct_overlap > 0, TRUE, FALSE),
+      has_Gata3_overlap = ifelse(TF == "Tal1" & Gata3_ct_overlap > 0, TRUE, FALSE),
+      proximal_binding = ifelse(linkage_kbp <= 50, TRUE, FALSE), # Binding proximity < 50kb
+      expressed_in_GA = ifelse(pct.1 > 0.1, TRUE, FALSE),         # Expression in GA > 10%
+      expressed_in_GL = ifelse(pct.2 > 0.1, TRUE, FALSE),         # Expression in GL > 10%
+      PRO_GA_increase = ifelse(PRO1_2_GA_FT_ratio > 1, TRUE, FALSE),  # Footprint score increase from PRO to GA
+      PRO_GL_increase = ifelse(PRO1_2_GL_FT_ratio > 1, TRUE, FALSE),  # Footprint score increase from PRO to GL
+      strong_TE_X_Y = ifelse(X_Y_te_coef > 0.02, TRUE, FALSE),  # Threshold for X->Y TE coefficient
+      strong_TE_Y_X = ifelse(Y_X_te_coef > 0.02, TRUE, FALSE)   # Threshold for Y->X TE coefficient
+    )
+  
+  # Define a function to query genes based on various conditions, including TE coefficients and lineage focus
+  query_TF_targets <- function(type = c("Activation", "Repression"),
+                               te_direction = NULL, condition = NULL,
+                               Gata2_overlap = NULL, Gata3_overlap = NULL,
+                               proximal_binding = NULL, PRO_GA_increase = NULL,
+                               PRO_GL_increase = NULL, expressed_in_GA = NULL,
+                               expressed_in_GL = NULL, strong_TE = NULL, lineage_focus = NULL) {
+    
+    # Start with basic filtering on activation/repression
+    query_result <- filtered_targets %>%
+      filter(regulation %in% type)
+    
+    # Add filtering by TE direction if specified
+    if (!is.null(te_direction)) {
+      query_result <- query_result %>%
+        filter(TE_relationship == te_direction)
+    }
+    
+    # Filter by condition-specific regulation if specified
+    if (!is.null(condition)) {
+      query_result <- query_result %>%
+        filter(condition_specificity == condition)
+    }
+    
+    # Add filtering for Gata2 overlap if specified and the TF is Tal1
+    if (!is.null(Gata2_overlap) & TF == "Tal1") {
+      query_result <- query_result %>%
+        filter(has_Gata2_overlap == Gata2_overlap)
+    }
+    
+    # Add filtering for Gata3 overlap if specified and the TF is Tal1
+    if (!is.null(Gata3_overlap) & TF == "Tal1") {
+      query_result <- query_result %>%
+        filter(has_Gata3_overlap == Gata3_overlap)
+    }
+    
+    # Filter by proximity to binding site if specified
+    if (!is.null(proximal_binding)) {
+      query_result <- query_result %>%
+        filter(proximal_binding == proximal_binding)
+    }
+    
+    # Filter by footprint score increase from PRO to GA or GL
+    if (!is.null(PRO_GA_increase)) {
+      query_result <- query_result %>%
+        filter(PRO_GA_increase == PRO_GA_increase)
+    }
+    if (!is.null(PRO_GL_increase)) {
+      query_result <- query_result %>%
+        filter(PRO_GL_increase == PRO_GL_increase)
+    }
+    
+    # Filter by gene expression in GA or GL if specified
+    if (!is.null(expressed_in_GA)) {
+      query_result <- query_result %>%
+        filter(expressed_in_GA == expressed_in_GA)
+    }
+    if (!is.null(expressed_in_GL)) {
+      query_result <- query_result %>%
+        filter(expressed_in_GL == expressed_in_GL)
+    }
+    
+    # Filter by strong TE coefficient if specified
+    if (!is.null(strong_TE)) {
+      if (strong_TE == "X_Y") {
+        query_result <- query_result %>%
+          filter(strong_TE_X_Y == TRUE)
+      } else if (strong_TE == "Y_X") {
+        query_result <- query_result %>%
+          filter(strong_TE_Y_X == TRUE)
+      }
+    }
+    
+    # Filter by lineage focus (GA or GL)
+    if (!is.null(lineage_focus)) {
+      if (lineage_focus == "GA") {
+        query_result <- query_result %>%
+          filter(PRO_GA_increase == TRUE)
+      } else if (lineage_focus == "GL") {
+        query_result <- query_result %>%
+          filter(PRO_GL_increase == TRUE)
+      }
+    }
+    
+    return(query_result)
+  }
+  
+  # Return both the processed data and the query function
+  list(
+    data = filtered_targets,
+    query_function = query_TF_targets
+  )
+}
+
