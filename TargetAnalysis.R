@@ -356,6 +356,61 @@ WHERE
   return(list(targets_gene_name=targets, targets_gene.id=targets_gene_id, target.data=target.data))
 }
 
+getTargets_rV2_feature_level_v2 <- function(TF_name, con, include_extra_columns = FALSE) {
+  # Adjust TF name for Tobias DB if necessary
+  TF_name.tobias <- TF_name
+  if (TF_name == "Ebf1") {
+    TF_name.tobias <- "COE1"
+  }
+  
+  # Create temporary table for the TF
+  dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
+  dbExecute(con, paste("CREATE TEMP TABLE filtered_tobias AS
+                        SELECT * FROM Tobias 
+                        WHERE TF_gene_name = '", toupper(TF_name.tobias), "';", sep = ""))
+  
+  # Build the query dynamically
+  targetQuery <- paste("
+    SELECT 
+      gm.gene_name,
+      gm.ensg_id,
+      tb.TFBS_name,
+      li.feature AS feature,
+      GA1_2_bound AS GA1_2_bound,
+      GL1_2_bound AS GL1_2_bound,
+      tb.PRO1_2_score,
+      tb.CO1_2_score,
+      tb.GA1_2_score,
+      tb.GL1_2_score,
+      tb.GA1_2_score - tb.PRO1_2_score AS PRO1_2_GA_increase,
+      tb.GL1_2_score - tb.PRO1_2_score AS PRO1_2_GL_increase,
+      tb.GA1_2_score / NULLIF(tb.PRO1_2_score, 0) AS PRO1_2_GA_FT_ratio,
+      tb.GL1_2_score / NULLIF(tb.PRO1_2_score, 0) AS PRO1_2_GL_FT_ratio,
+      tb.w_mean_cons,
+      li.zscore,
+      ABS(((li.end+li.start)/2) - gm.TSS_start) AS linkage_dist
+    ", if (include_extra_columns) {"
+      , gm.TSS_start, gm.chromosome, gm.strand, gm.exon_count
+    "}, "
+    FROM 
+      links_s AS li
+      JOIN filtered_tobias AS tb ON tb.features = li.feature
+      JOIN (
+        SELECT DISTINCT feature, target_gene_name
+        FROM CT_data
+        WHERE target_gene_name = '", TF_name, "'
+      ) AS ct ON ct.feature = tb.features
+      JOIN gene_metadata AS gm ON gm.ensg_id = li.ensg_id
+    WHERE
+      tb.TF_gene_name = '", toupper(TF_name.tobias), "'
+  ", sep = "")
+  
+  # Get the query result
+  target.data <- as_tibble(dbGetQuery(con, targetQuery))
+  
+  return(target.data)
+}
+
 do.GSEA <- function(targets,DEG.res,TF.name, comp.title){
   # lower.thr <- .25
   # upper.thr <- .75
@@ -405,6 +460,7 @@ do.GSEA <- function(targets,DEG.res,TF.name, comp.title){
   
   return(list(p1=p1,d1=d1,limits=limits,edges=edges))
 }
+
 # Define the function
 plot_heatmap_with_variability <- function(
     gene_list,            # List of gene names (e.g., Tal1.causal.targets)
@@ -432,10 +488,15 @@ plot_heatmap_with_variability <- function(
   pos.targets <- combined_tibble %>%
     filter(eval(parse(text = filter_expression))) # Dynamically evaluates the filtering
   
-  # Group and mutate for bin_category
+  # Keep the correlation data in pos.targets before grouping by ensg_id
   pos.targets <- pos.targets %>%
     group_by(ensg_id) %>%
-    summarize(linkage_kbp = min(linkage_kbp)) %>%
+    summarize(linkage_kbp = min(linkage_kbp), 
+              TF.cor.PRO.GA = first(TF.cor.PRO.GA),  # Keep the correlation data for GA
+              TF.cor.PRO.GL = first(TF.cor.PRO.GL))  # Keep the correlation data for GL
+  
+  # Create bin_category based on linkage_kbp
+  pos.targets <- pos.targets %>%
     mutate(bin_category = case_when(
       linkage_kbp <= 5 ~ bin_ranges[1],
       linkage_kbp > 5 & linkage_kbp <= 50 ~ bin_ranges[2],
@@ -476,10 +537,20 @@ plot_heatmap_with_variability <- function(
     left_join(avg_variability_by_bin, by = "bin_category") %>%
     mutate(bin_category_label = paste0(bin_category, " (Avg Var: ", round(avg_variability, 3), ")"))
   
-  # Create row annotation (binary and variability)
-  row_annotation <- rowAnnotation(
+  # Extract correlation data for PRO1_2 to GA and PRO1_2 to GL
+  PRO1_2_GA_correlation <- pos.targets$TF.cor.PRO.GA # Correlation values for GA
+  PRO1_2_GL_correlation <- pos.targets$TF.cor.PRO.GL # Correlation values for GL
+  
+  # Create row annotation (binary, variability + PRO1_2 GA/GL correlations)
+  row_annotation_left <- rowAnnotation(
     Causal_Target = anno_simple(as.integer(rownames(data2plot) %in% gene_list), col = c("0" = "white", "1" = "green")),
     Variability = anno_simple(gene_variability, col = colorRamp2(c(min(gene_variability), max(gene_variability)), c("blue", "red")))
+  )
+  
+  # Right side row annotation for PRO1_2 to GA and GL correlations
+  row_annotation_right <- rowAnnotation(
+    PRO1_2_GA_Correlation = anno_simple(PRO1_2_GA_correlation, col = colorRamp2(c(min(PRO1_2_GA_correlation), max(PRO1_2_GA_correlation)), c("blue", "red"))),
+    PRO1_2_GL_Correlation = anno_simple(PRO1_2_GL_correlation, col = colorRamp2(c(min(PRO1_2_GL_correlation), max(PRO1_2_GL_correlation)), c("blue", "red")))
   )
   
   # Color scale for the heatmap
@@ -499,33 +570,126 @@ plot_heatmap_with_variability <- function(
     row_names_gp = gpar(fontsize = 6),
     clustering_method_rows = "ward.D2",
     col = color_scale,
-    left_annotation = row_annotation              # Add row annotation to the heatmap
+    left_annotation = row_annotation_left,        # Add left annotation to the heatmap (causal target + variability)
+    right_annotation = row_annotation_right       # Add right annotation for PRO1_2 GA and GL correlations
   )
   print(h1)
   dev.off()
 }
 
-
-# Step 1: Adding Transfer Entropy Results to the input_tibble
-add_TE_to_tibble <- function(input_tibble, te_results_list) {
-  # Create a dataframe to hold TE results
-  te_df <- do.call(rbind, lapply(names(te_results_list), function(gene) {
-    te_res <- te_results_list[[gene]]$coef
-    data.frame(
-      ensg_id = gene,
-      X_Y_te_p_value = te_res["X->Y", "p-value"],
-      Y_X_te_p_value = te_res["Y->X", "p-value"],
-      X_Y_te_coef = te_res["X->Y", "te"],
-      Y_X_te_coef = te_res["Y->X", "te"],
-      stringsAsFactors = FALSE
-    )
-  }))
+plot_heatmap_with_variability_v2 <- function(
+    combined_tibble,      # Dataframe with the filtered target information from process_TF_targets_with_TE_v2
+    rna_data,             # Matrix of RNA expression data
+    gene_id2name,         # A named vector to map gene IDs to gene names
+    target_RNA_threshold = 1.2, # RNA expression filter threshold
+    output_file = "heatmap_with_variability.pdf", # Output file for the heatmap
+    column_samples = c("PRO1","PRO2","CO1","CO2","GA1","GA2","GA3","GA4","GA5","GA6","GL1","GL2","GL3","GL4","GL5"), # Column names (samples) to plot
+    bin_ranges = c("0-5 kbp", "> 5 kbp - 50 kbp", "> 50 kbp") # Bin ranges for splitting rows
+) {
   
-  # Merge TE results with the original tibble by ensg_id
-  input_tibble_with_te <- input_tibble %>%
-    left_join(te_df, by = "ensg_id")
+  # Keep the correlation data in pos.targets before grouping by ensg_id
+  pos.targets <- combined_tibble %>%
+    group_by(ensg_id) %>%
+    reframe(linkage_kbp = min(linkage_kbp, na.rm = TRUE), 
+            TF.cor.PRO.GA = first(TF.cor.PRO.GA, na.rm = TRUE),  # Keep the correlation data for GA
+            TF.cor.PRO.GL = first(TF.cor.PRO.GL, na.rm = TRUE))  # Keep the correlation data for GL
   
-  return(input_tibble_with_te)
+  # Create bin_category based on linkage_kbp
+  pos.targets <- pos.targets %>%
+    mutate(bin_category = case_when(
+      linkage_kbp <= 5 ~ bin_ranges[1],
+      linkage_kbp > 5 & linkage_kbp <= 50 ~ bin_ranges[2],
+      linkage_kbp > 50 ~ bin_ranges[3]
+    ))
+  
+  # Filter expressed genes for heatmap
+  exp.filt <- rownames(rna_data[rowSums(rna_data > target_RNA_threshold, na.rm = TRUE) > 0,])
+  pos.targets <- pos.targets %>% filter(ensg_id %in% exp.filt)
+  
+  # Check if any targets remain after RNA expression filtering
+  if (nrow(pos.targets) == 0) {
+    stop("No targets remaining after RNA expression filtering.")
+  }
+  
+  # Data to plot (log transformed RNA expression)
+  data2plot <- log1p(rna_data[pos.targets$ensg_id, column_samples])
+  
+  # Set gene names as row names
+  rownames(data2plot) <- sapply(rownames(data2plot), function(g) { gene_id2name[[g]] })
+  
+  # Calculate variability (standard deviation) per gene
+  gene_variability <- apply(data2plot, 1, sd, na.rm = TRUE)
+  
+  # Ensure the row order of data2plot and pos.targets matches, add variability to pos.targets
+  pos.targets <- pos.targets %>%
+    mutate(gene_name = sapply(ensg_id, function(g) { gene_id2name[[g]] })) %>%
+    filter(gene_name %in% rownames(data2plot)) %>%
+    arrange(factor(gene_name, levels = rownames(data2plot))) %>%
+    mutate(variability = gene_variability[match(gene_name, rownames(data2plot))])
+  
+  # Ensure that gene_variability matches the row names of data2plot
+  gene_variability <- gene_variability[match(rownames(data2plot), names(gene_variability))]
+  
+  # Handle cases where all variability values are missing
+  if (all(is.na(gene_variability))) {
+    stop("All variability values are missing. Cannot generate heatmap.")
+  }
+  
+  # Calculate average variability per bin_category
+  avg_variability_by_bin <- pos.targets %>%
+    group_by(bin_category) %>%
+    summarise(avg_variability = mean(variability, na.rm = TRUE))
+  
+  # Append average variability to bin_category names
+  pos.targets <- pos.targets %>%
+    left_join(avg_variability_by_bin, by = "bin_category") %>%
+    mutate(bin_category_label = paste0(bin_category, " (Avg Var: ", round(avg_variability, 3), ")"))
+  
+  # Extract correlation data for PRO1_2 to GA and PRO1_2 to GL
+  PRO1_2_GA_correlation <- pos.targets$TF.cor.PRO.GA # Correlation values for GA
+  PRO1_2_GL_correlation <- pos.targets$TF.cor.PRO.GL # Correlation values for GL
+  
+  # Create row annotation (binary, variability + PRO1_2 GA/GL correlations)
+  row_annotation_left <- rowAnnotation(
+    Variability = anno_simple(gene_variability, 
+                              col = colorRamp2(c(min(gene_variability, na.rm = TRUE), 
+                                                 max(gene_variability, na.rm = TRUE)), c("blue", "red")))
+  )
+  
+  # Right side row annotation for PRO1_2 to GA and GL correlations
+  row_annotation_right <- rowAnnotation(
+    PRO1_2_GA_Correlation = anno_simple(PRO1_2_GA_correlation, 
+                                        col = colorRamp2(c(min(PRO1_2_GA_correlation, na.rm = TRUE), 
+                                                           max(PRO1_2_GA_correlation, na.rm = TRUE)), 
+                                                         c("blue", "red"))),
+    PRO1_2_GL_Correlation = anno_simple(PRO1_2_GL_correlation, 
+                                        col = colorRamp2(c(min(PRO1_2_GL_correlation, na.rm = TRUE), 
+                                                           max(PRO1_2_GL_correlation, na.rm = TRUE)), 
+                                                         c("blue", "red")))
+  )
+  
+  # Color scale for the heatmap
+  color_scale <- colorRamp2(c(min(data2plot, na.rm = TRUE), max(data2plot, na.rm = TRUE)), c("white", "red"))
+  
+  # Plot the heatmap
+  pdf(file = output_file, width = 10, height = 25)
+  h1 <- Heatmap(
+    data2plot,
+    name = "RNA expression",
+    row_split = pos.targets$bin_category_label,  # Use modified bin_category labels with variability
+    cluster_rows = TRUE,                         # Cluster rows within each bin_category
+    cluster_columns = FALSE,                     # Remove column clustering
+    show_row_names = TRUE,                       # Show row names
+    show_column_names = TRUE,                    # Show column names
+    clustering_distance_rows = "euclidean",
+    row_names_gp = gpar(fontsize = 6),
+    clustering_method_rows = "ward.D2",
+    col = color_scale,
+    left_annotation = row_annotation_left,        # Add left annotation to the heatmap (variability)
+    right_annotation = row_annotation_right       # Add right annotation for PRO1_2 GA and GL correlations
+  )
+  print(h1)
+  dev.off()
 }
 
 # Step 1: Adding Transfer Entropy Results to the input_tibble
@@ -701,3 +865,112 @@ process_TF_targets_with_TE <- function(input_tibble_with_te, TF) {
   )
 }
 
+# Helper function to handle null values
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+process_TF_targets_with_TE_v2 <- function(input_tibble_with_te, 
+                                          TF, 
+                                          zscore_threshold = NULL, 
+                                          pval_adj_threshold = NULL, 
+                                          w_mean_cons_threshold = NULL, 
+                                          pct_1_threshold = 0.5, 
+                                          pct_2_threshold = 0.5, 
+                                          dynamic_thresholds = TRUE, 
+                                          focus_lineage = c("GA", "GL", "both"),
+                                          regulation_type = c("Activation", "Repression", "Unknown"),
+                                          GA_GL_bound_required = TRUE, 
+                                          custom_filter = NULL, 
+                                          causality = c("TF->Target", "Target->TF", "Bidirectional", "No significant TE")) {
+  
+  # Set dynamic thresholds based on quantiles if not provided
+  if (dynamic_thresholds) {
+    zscore_threshold <- zscore_threshold %||% quantile(input_tibble_with_te$zscore, 0.75, na.rm = TRUE) # Use 75th percentile
+    pval_adj_threshold <- pval_adj_threshold %||% 0.05 # Use default 0.05 if not provided
+    w_mean_cons_threshold <- w_mean_cons_threshold %||% quantile(input_tibble_with_te$w_mean_cons, 0.75, na.rm = TRUE) # Use 75th percentile
+    pct_1_threshold <- pct_1_threshold %||% quantile(input_tibble_with_te$pct.1, 0.75, na.rm = TRUE) # Use 75th percentile
+    pct_2_threshold <- pct_2_threshold %||% quantile(input_tibble_with_te$pct.2, 0.75, na.rm = TRUE) # Use 75th percentile
+  }
+  
+  # Filter based on the dynamically calculated or provided thresholds
+  filtered_targets <- input_tibble_with_te %>%
+    filter(TF == !!TF) %>%
+    filter(zscore > zscore_threshold &
+             p_val_adj < pval_adj_threshold &
+             w_mean_cons > w_mean_cons_threshold)
+  
+  # Debug: Print how many rows are left after this filter
+  cat("Number of target genes after zscore, p_val_adj, and w_mean_cons filtering:", nrow(filtered_targets), "\n")
+  
+  # Apply lineage-specific filtering if required
+  if (focus_lineage == "GA") {
+    filtered_targets <- filtered_targets %>%
+      filter(GA1_2_bound == 1)
+  } else if (focus_lineage == "GL") {
+    filtered_targets <- filtered_targets %>%
+      filter(GL1_2_bound == 1)
+  }
+  
+  # Debug: Print how many rows are left after lineage filter
+  cat("Number of target genes after lineage filtering:", nrow(filtered_targets), "\n")
+  
+  # Apply custom filter if provided
+  if (!is.null(custom_filter)) {
+    filtered_targets <- filtered_targets %>%
+      filter(eval(parse(text = custom_filter)))
+  }
+  
+  # Debug: Print how many rows are left after custom filter
+  cat("Number of target genes after custom filtering:", nrow(filtered_targets), "\n")
+  
+  # Filter based on regulation type
+  filtered_targets <- filtered_targets %>%
+    mutate(regulation = case_when(
+      zscore > 0 & avg_log2FC > 0.1 ~ "Activation",  # TF activates the gene
+      zscore < 0 & avg_log2FC < -0.1 ~ "Repression", # TF represses the gene
+      TRUE ~ "Unknown"                               # Mixed or weak signal
+    )) %>%
+    filter(regulation %in% regulation_type)
+  
+  # Debug: Print how many rows are left after regulation filtering
+  cat("Number of target genes after regulation type filtering:", nrow(filtered_targets), "\n")
+  
+  # Filter based on transfer entropy results and causality
+  filtered_targets <- filtered_targets %>%
+    mutate(
+      causality_present_X_Y = ifelse(X_Y_te_p_value < 0.05 & X_Y_te_coef > 0.02, TRUE, FALSE), # X->Y TE significant and strong
+      causality_present_Y_X = ifelse(Y_X_te_p_value < 0.05 & Y_X_te_coef > 0.02, TRUE, FALSE), # Y->X TE significant and strong
+      TE_relationship = case_when(
+        causality_present_X_Y & !causality_present_Y_X ~ "TF->Target",
+        causality_present_Y_X & !causality_present_X_Y ~ "Target->TF",
+        causality_present_X_Y & causality_present_Y_X ~ "Bidirectional",
+        TRUE ~ "No significant TE"
+      )
+    ) %>%
+    filter(TE_relationship %in% causality)
+  
+  # Debug: Print how many rows are left after causality filtering
+  cat("Number of target genes after causality filtering:", nrow(filtered_targets), "\n")
+  
+  # Filter based on pct.1 and pct.2 thresholds for GA and GL expression
+  if (focus_lineage == "GA") {
+    filtered_targets <- filtered_targets %>%
+      filter(pct.1 > pct_1_threshold)
+  } else if (focus_lineage == "GL") {
+    filtered_targets <- filtered_targets %>%
+      filter(pct.2 > pct_2_threshold)
+  }
+  
+  # Debug: Print how many rows are left after pct filtering
+  cat("Number of target genes after pct filtering:", nrow(filtered_targets), "\n")
+  
+  # Keep GA/GL bound condition if required
+  if (GA_GL_bound_required) {
+    filtered_targets <- filtered_targets %>%
+      filter(GA1_2_bound == 1 | GL1_2_bound == 1)
+  }
+  
+  # Debug: Final number of rows
+  cat("Final number of target genes after all filters:", nrow(filtered_targets), "\n")
+  
+  return(filtered_targets)
+}
