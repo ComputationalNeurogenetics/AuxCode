@@ -31,30 +31,289 @@ extract_gene_enrichments <- function(ranks,gene_sets){
 
 drawTargetLinePlot <- function(DEG.res, gene_name2id, gene_id2name, limits.to.plot, cell.groups){
   
-  deg.data <- DEG.res$d1 %>% filter(p_val_adj<0.01) %>% mutate(rank = row_number()) %>% dplyr::select(ensg_id,rank,matches("exp_avg_log2$")) %>% pivot_longer(cols = where(is.double), names_to = "cell_group", values_to = "exp_avg_log2")
+  # Prepare the data
+  deg.data <- DEG.res$d1 %>%
+    filter(p_val_adj < 0.01) %>%
+    mutate(rank = row_number()) %>%
+    dplyr::select(ensg_id, rank, matches("exp_avg_log2$")) %>%
+    pivot_longer(cols = where(is.double), names_to = "cell_group", values_to = "exp_avg_log2")
   
-  limits.to.plot <- DEG.res$limits
-  upper.limit=limits.to.plot$upper.limit
-  lower.limit=limits.to.plot$lower.limit
+  # Extract limits for plotting
+  upper.limit = limits.to.plot$upper.limit
+  lower.limit = limits.to.plot$lower.limit
   
-  upper.pos=which.min(abs(filter(DEG.res$d1,p_val_adj<0.01) %>% pull(avg_log2FC) - upper.limit))
-  lower.pos=which.min(abs(filter(DEG.res$d1,p_val_adj<0.01) %>% pull(avg_log2FC) - lower.limit))
-  xmax.right=nrow(filter(DEG.res$d1,p_val_adj<0.01))
+  # Find positions for upper and lower limits
+  upper.pos = which.min(abs(filter(DEG.res$d1, p_val_adj < 0.01) %>% pull(avg_log2FC) - upper.limit))
+  lower.pos = which.min(abs(filter(DEG.res$d1, p_val_adj < 0.01) %>% pull(avg_log2FC) - lower.limit))
+  xmax.right = nrow(filter(DEG.res$d1, p_val_adj < 0.01))
   
-  cell_group_colors <- c("GA1_2_exp_avg_log2" = "blue", "GL1_2_exp_avg_log2" = "red") 
+  # Define colors for cell groups
+  cell_group_colors <- c("GA1_2_exp_avg_log2" = "blue", "GL1_2_exp_avg_log2" = "red")
   
-  l.1 <- ggplot(deg.data, aes(x=rank,y=exp_avg_log2, group=cell_group)) + geom_line(aes(colour = cell_group),alpha=.25) + theme_minimal() + theme(
-    axis.text.x = element_text(size = 15),
-    axis.text.y = element_text(size = 15),
-    legend.text = element_text(size = 6),
-    legend.position = "bottom") +
+  # Create the line plot with limits applied
+  l.1 <- ggplot(deg.data, aes(x = rank, y = exp_avg_log2, group = cell_group)) +
+    geom_line(aes(colour = cell_group), alpha = 0.55) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 15),
+      axis.text.y = element_text(size = 15),
+      legend.text = element_text(size = 6),
+      legend.position = "bottom"
+    ) +
     scale_color_manual(values = cell_group_colors) +
-    xlab("DEG target genes in order of avg_log2FC") + ylab("Expression avg log2") +
-    geom_rect(aes(xmin=0,xmax=upper.pos,ymin=-0.1,ymax=0.1), fill="blue", alpha=0.002) +
-    geom_rect(aes(xmin=lower.pos,xmax=xmax.right,ymin=-0.1,ymax=0.1), fill="red", alpha=0.002)
-
-return(l.1)
+    xlab("DEG target genes in order of avg_log2FC") +
+    ylab("Expression avg log2") +
+    # Fixing the geom_rect aesthetics by using fixed values
+    geom_rect(xmin = 0, xmax = upper.pos, ymin = -0.1, ymax = 0.1, fill = "blue", alpha = 0.002) +
+    geom_rect(xmin = lower.pos, xmax = xmax.right, ymin = -0.1, ymax = 0.1, fill = "red", alpha = 0.002)
+  
+  return(l.1)
 }
+
+library(ggplot2)
+library(dplyr)
+
+drawEdgeLinePlot <- function(DEG.res, gene_name2id, gene_id2name, limits.to.plot, cell.groups, edge_type = c("leading", "trailing")){
+  
+  # Match the edge_type argument to ensure valid input
+  edge_type <- match.arg(edge_type)
+  
+  # Filter for leading or trailing edge genes
+  if (edge_type == "leading") {
+    target_genes <- DEG.res$edges$combined_edges$positive_leading_edge
+    color_fill <- "blue"
+  } else if (edge_type == "trailing") {
+    target_genes <- DEG.res$edges$combined_edges$negative_trailing_edge
+    color_fill <- "red"
+  }
+  
+  # Filter the data for selected edge type genes
+  deg.data <- DEG.res$d1 %>%
+    filter(gene_name %in% target_genes) %>%
+    mutate(rank = row_number()) %>%
+    dplyr::select(ensg_id, rank, matches("exp_avg_log2$")) %>%
+    pivot_longer(cols = where(is.double), names_to = "cell_group", values_to = "exp_avg_log2")
+  
+  # Extract limits for plotting
+  upper.limit = limits.to.plot$upper.limit
+  lower.limit = limits.to.plot$lower.limit
+  
+  xmax.right = nrow(deg.data)
+  
+  # Define colors for cell groups
+  cell_group_colors <- c("GA1_2_exp_avg_log2" = "blue", "GL1_2_exp_avg_log2" = "red")
+  
+  # Create the line plot with limits applied
+  l.1 <- ggplot(deg.data, aes(x = rank, y = exp_avg_log2, group = cell_group)) +
+    geom_line(aes(colour = cell_group), alpha = 0.55) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 15),
+      axis.text.y = element_text(size = 15),
+      legend.text = element_text(size = 6),
+      legend.position = "bottom"
+    ) +
+    scale_color_manual(values = cell_group_colors) +
+    xlab(paste(edge_type, "edge target genes in order of avg_log2FC")) +
+    ylab("Expression avg log2") +
+    # Add rectangular highlighting if needed, can be removed if not required
+    geom_rect(xmin = 0, xmax = xmax.right, ymin = -0.1, ymax = 0.1, fill = color_fill, alpha = 0.002)
+  
+  return(l.1)
+}
+
+plotEdgeScatterWithRawValues <- function(DEG.res, gene_name2id, gene_id2name, limits.to.plot, cell.groups, edge_type = c("leading", "trailing"), log_scale = FALSE) {
+  
+  # Match the edge_type argument to ensure valid input
+  edge_type <- match.arg(edge_type)
+  
+  # Filter for leading or trailing edge genes
+  if (edge_type == "leading") {
+    target_genes <- DEG.res$edges$combined_edges$positive_leading_edge
+    color_fill <- "blue"
+  } else if (edge_type == "trailing") {
+    target_genes <- DEG.res$edges$combined_edges$negative_trailing_edge
+    color_fill <- "red"
+  }
+  
+  # Filter the DEG data for the selected edge type genes
+  deg.data <- DEG.res$d1 %>%
+    filter(gene_name %in% target_genes) %>%
+    mutate(rank = row_number()) %>%
+    dplyr::select(ensg_id, gene_name, rank, avg_log2FC, GA1_2_exp_avg, GL1_2_exp_avg)  # Use raw expression values
+  
+  # Apply log scale if needed
+  if (log_scale) {
+    deg.data <- deg.data %>%
+      mutate(GA1_2_exp_avg = log2(GA1_2_exp_avg + 1),
+             GL1_2_exp_avg = log2(GL1_2_exp_avg + 1))
+  }
+  
+  # Extract the limits for plotting
+  upper.limit <- limits.to.plot$upper.limit
+  lower.limit <- limits.to.plot$lower.limit
+  mid.upper.limit <- limits.to.plot$mid.upper.limit
+  mid.lower.limit <- limits.to.plot$mid.lower.limit
+  
+  # Create the scatter plot with limits applied
+  l1 <- ggplot(deg.data, aes(x = GL1_2_exp_avg, y = GA1_2_exp_avg)) +
+    geom_point(color = color_fill, size = 2, alpha = 0.6) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 15),
+      axis.text.y = element_text(size = 15),
+      legend.position = "none"
+    ) +
+    xlab("GL1_2 Expression log2(avg+1)") +
+    ylab("GA1_2 Expression log2(avg+1)") +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray") +
+    geom_hline(yintercept = c(upper.limit, mid.upper.limit, mid.lower.limit, lower.limit), linetype = "dotted", color = "gray") +
+    geom_vline(xintercept = c(upper.limit, mid.upper.limit, mid.lower.limit, lower.limit), linetype = "dotted", color = "gray") +
+    annotate("rect", xmin = lower.limit, xmax = upper.limit, ymin = lower.limit, ymax = upper.limit, fill = color_fill, alpha = 0.05) +
+    geom_text_repel(
+      aes(label = gene_name),
+      max.overlaps = 30,  # Limits number of labels
+      force = 10,         # Adjusts how strong the repelling force is
+      box.padding = 0.15,  # Adjusts spacing around labels
+      point.padding = 0.5,
+      segment.color = "grey50",  # Color of the connecting lines
+      segment.size = 0.25,        # Thickness of the connecting lines
+      segment.alpha=0.75,
+      size = 3,
+      max.time = 1,       # Time for placing labels
+      seed = 42           # Ensures reproducibility
+    )
+  
+  return(l1)
+}
+
+drawTargetBarPlot <- function(DEG.res, gene_name2id, gene_id2name, limits.to.plot, cell.groups, limit_x_axis = TRUE) {
+  
+  # Filter the significant genes based on p_val_adj < 0.01
+  deg.data <- DEG.res$d1 %>%
+    filter(p_val_adj < 0.01) %>%
+    dplyr::select(ensg_id, avg_log2FC, matches("exp_avg_log2$"))
+  
+  # Apply the x-axis limits based on avg_log2FC
+  if (limit_x_axis) {
+    deg.data <- deg.data %>%
+      filter(avg_log2FC >= limits.to.plot$lower.limit & avg_log2FC <= limits.to.plot$upper.limit)
+  }
+  
+  # Add rank based on the filtered data (after applying limits)
+  deg.data <- deg.data %>%
+    mutate(rank = row_number()) %>%
+    pivot_longer(cols = where(is.double), names_to = "cell_group", values_to = "exp_avg_log2") 
+  
+  # Define colors for cell groups
+  cell_group_colors <- c("GA1_2_exp_avg_log2" = "blue", "GL1_2_exp_avg_log2" = "red")
+  
+  # Create the stacked bar plot
+  l.1 <- ggplot(deg.data, aes(x = rank, y = exp_avg_log2, fill = cell_group)) +
+    geom_bar(stat = "identity", position = "stack", alpha = .75) +  # Stacked bar plot
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 15),
+      axis.text.y = element_text(size = 15),
+      legend.text = element_text(size = 6),
+      legend.position = "bottom"
+    ) +
+    scale_fill_manual(values = cell_group_colors) +
+    xlab("DEG target genes in order of avg_log2FC") +
+    ylab("Expression avg log2")
+  
+  return(l.1)
+}
+
+# Function to create a volcano plot with limits based on drawTargetBarPlot limits.to.plot
+drawVolcanoPlotWithLimits <- function(DEG.res, gene_name2id, gene_id2name, limits.to.plot, cell.groups) {
+  
+  # Filter significant genes based on p_val_adj < 0.01
+  deg.data <- DEG.res$d1 %>%
+    filter(p_val_adj < 0.01) %>%
+    arrange(desc(avg_log2FC))  # Arrange by avg_log2FC
+  
+  # Extract limits for plotting
+  upper.limit <- limits.to.plot$upper.limit
+  lower.limit <- limits.to.plot$lower.limit
+  
+  # Find the index positions for the limits in the sorted data
+  upper.pos <- which.min(abs(deg.data$avg_log2FC - upper.limit))  # Last gene in the blue region
+  lower.pos <- which.min(abs(deg.data$avg_log2FC - lower.limit))  # First gene in the red region
+  
+  # Select the genes that are outside of the defined regions
+  selected_genes <- deg.data %>%
+    filter(row_number() <= upper.pos | row_number() >= lower.pos)
+  
+  # Create the volcano plot
+  volcano_plot <- ggplot(deg.data, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+    geom_point(alpha = 0.5, color = "gray") +  # Background genes
+    geom_point(data = selected_genes, aes(x = avg_log2FC, y = -log10(p_val_adj), color = avg_log2FC), size = 3) +  # Highlighted points
+    scale_color_gradient(low = "red", high = "blue") +  # Color gradient for log fold change
+    labs(
+      x = "Log2 Fold Change",
+      y = "-log10 Adjusted P-value",
+      title = "Volcano Plot Highlighting Genes Outside Defined Limits"
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position = "none",
+      axis.text.x = element_text(size = 12),
+      axis.text.y = element_text(size = 12)
+    )
+  
+  return(volcano_plot)
+}
+
+library(ggplot2)
+library(dplyr)
+
+# Function to draw scatterplot of GA expression vs GL expression for target genes, limited to blue and red regions
+plotGA_vs_GL_ScatterWithLimits <- function(DEG.res, gene_name2id, gene_id2name, limits.to.plot, cell.groups) {
+  
+  # Extract limits for plotting
+  upper.limit <- limits.to.plot$upper.limit  # GA trailing edge limit (should be blue)
+  lower.limit <- limits.to.plot$lower.limit  # GL trailing edge limit (should be red)
+  
+  # Filter the data for significant target genes (p_val_adj < 0.01)
+  deg.data <- DEG.res$d1 %>%
+    filter(p_val_adj < 0.01)
+  
+  # Separate GA trailing edge (blue) and GL trailing edge (red) region genes
+  ga_trailing_edge_genes <- deg.data %>%
+    filter(avg_log2FC <= upper.limit)  # GA trailing edge (blue)
+  
+  gl_trailing_edge_genes <- deg.data %>%
+    filter(avg_log2FC >= lower.limit)  # GL trailing edge (red)
+  
+  # Combine GA and GL trailing edge genes and add a color label
+  combined_genes <- bind_rows(
+    ga_trailing_edge_genes %>% mutate(region = "GA trailing edge"),  # GA trailing edge (blue)
+    gl_trailing_edge_genes %>% mutate(region = "GL trailing edge")   # GL trailing edge (red)
+  )
+  
+  # Create the scatter plot comparing GL vs GA expression, colored by region
+  scatter_plot <- ggplot(combined_genes, aes(x = GL1_2_exp_avg_log2, y = GA1_2_exp_avg_log2, color = region)) +
+    geom_point(size = 2, alpha = 0.7) +
+    scale_color_manual(values = c("GA trailing edge" = "blue", "GL trailing edge" = "red")) +  # Corrected region color mapping
+    labs(
+      x = "GL Expression (avg log2)",
+      y = "GA Expression (avg log2)",
+      title = "Scatter Plot: GA vs GL Expression (Trailing Edges)"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 12),
+      axis.text.y = element_text(size = 12),
+      legend.position = "bottom"
+    )
+  
+  return(scatter_plot)
+}
+
+# Example usage:
+# plotGA_vs_GL_ScatterWithLimits(DEG.res, gene_name2id, gene_id2name, limits.to.plot, cell.groups)
+
 
 drawTargetHeatmap <- function(DEG.res, target.genes, assay.averages,gene_name2id, gene_id2name,limits.to.plot, cell.groups){
   
@@ -973,4 +1232,346 @@ process_TF_targets_with_TE_v2 <- function(input_tibble_with_te,
   cat("Final number of target genes after all filters:", nrow(filtered_targets), "\n")
   
   return(filtered_targets)
+}
+
+# Function to create barplot showing percentage of target genes in expression categories
+plot_expression_categories <- function(
+    combined_tibble,  # Dataframe with target gene information
+    rna_data,         # RNA expression data with genes as rows and samples as columns
+    cell_groups = c("GA", "GL")  # Cell groups to compare (GA and GL)
+) {
+  
+  # Ensure target genes (ensg_id) are present as rows in the RNA data
+  valid_targets <- combined_tibble %>%
+    filter(ensg_id %in% rownames(rna_data))
+  
+  if (nrow(valid_targets) == 0) {
+    stop("No valid target genes found in rna_data.")
+  }
+  
+  # Extract expression data for the valid target genes
+  expression_data <- rna_data[valid_targets$ensg_id, , drop = FALSE]
+  
+  # Reshape the expression data for categorization, grouping by GA and GL cell groups
+  plot_data <- expression_data %>%
+    as.data.frame() %>%
+    mutate(ensg_id = rownames(expression_data)) %>%
+    pivot_longer(cols = -ensg_id, names_to = "Sample", values_to = "Expression") %>%
+    left_join(valid_targets, by = "ensg_id") %>%
+    mutate(
+      group = case_when(
+        grepl("^GA", Sample) ~ "GA Group",
+        grepl("^GL", Sample) ~ "GL Group"
+      )
+    ) %>%
+    filter(!is.na(group))  # Remove any rows without GA or GL group
+  
+  # Categorize expression values into three bins: <0.5, 0.5-1.5, >1.5
+  plot_data <- plot_data %>%
+    mutate(expression_category = case_when(
+      Expression < 0.5 ~ "< 0.5",
+      Expression >= 0.5 & Expression <= 1.5 ~ "0.5 - 1.5",
+      Expression > 1.5 ~ "> 1.5"
+    ))
+  
+  # Calculate the percentage of genes in each category for GA and GL
+  percentage_data <- plot_data %>%
+    group_by(group, expression_category) %>%
+    summarise(count = n(), .groups = "drop") %>%
+    group_by(group) %>%
+    mutate(percentage = (count / sum(count)) * 100)
+  
+  # Create the barplot
+  ggplot(percentage_data, aes(x = expression_category, y = percentage, fill = group)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(
+      x = "Expression Category",
+      y = "Percentage of Target Genes (%)",
+      title = "Percentage of Target Genes in Expression Categories (GA vs GL)"
+    ) +
+    theme_minimal()
+}
+
+
+# Function to create boxplot of target gene expression levels in GA and GL cell groups
+plot_expression_by_cell_group <- function(
+    combined_tibble,  # Dataframe with target gene information
+    rna_data,         # RNA expression data with genes as rows and samples as columns
+    cell_groups = c("GA", "GL")  # Cell groups to compare (GA and GL)
+) {
+  
+  # Ensure target genes (ensg_id) are present as rows in the RNA data
+  valid_targets <- combined_tibble %>%
+    filter(ensg_id %in% rownames(rna_data))
+  
+  if (nrow(valid_targets) == 0) {
+    stop("No valid target genes found in rna_data.")
+  }
+  
+  # Extract expression data for the valid target genes
+  expression_data <- rna_data[valid_targets$ensg_id, , drop = FALSE]
+  
+  # Reshape the expression data for plotting, grouping by GA and GL cell groups
+  plot_data <- expression_data %>%
+    as.data.frame() %>%
+    mutate(ensg_id = rownames(expression_data)) %>%
+    pivot_longer(cols = -ensg_id, names_to = "Sample", values_to = "Expression") %>%
+    left_join(valid_targets, by = "ensg_id") %>%
+    mutate(
+      group = case_when(
+        grepl("^GA", Sample) ~ "GA Group",
+        grepl("^GL", Sample) ~ "GL Group"
+      )
+    ) %>%
+    filter(!is.na(group))  # Remove any rows without GA or GL group
+  
+  # Create the boxplot
+  ggplot(plot_data, aes(x = group, y = Expression, fill = group)) +
+    geom_boxplot(fill = "grey") +
+    labs(
+      x = "Cell Group",
+      y = "Gene Expression Level",
+      title = "Target Expression in GA and GL lineages"
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.text.x = element_text(size = 18,angle = 45, hjust = 1),
+          axis.text.y = element_text(size = 18),
+          axis.title.y = element_text(size = 16)) + xlab("")
+}
+
+# Function to plot the barplot of zscore counts
+plot_zscore_bar <- function(data) {
+  # Create a summary table with counts for zscore > 0 and zscore < 0
+  zscore_summary <- data %>%
+    summarize(
+      greater_than_zero = sum(zscore > 0),
+      less_than_zero = sum(zscore < 0)
+    ) %>%
+    pivot_longer(cols = everything(), names_to = "zscore_category", values_to = "count")
+  
+  # Create the barplot using ggplot2
+  ggplot(zscore_summary, aes(x = zscore_category, y = count, fill = zscore_category)) +
+    geom_bar(stat = "identity",color = "grey", fill = "grey") +
+    scale_x_discrete(labels = c("greater_than_zero" = "Pos. link", "less_than_zero" = "Neg. link")) +
+    labs(
+      x = "Link direction",
+      y = "Count",
+      title = ""
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.text.x = element_text(size = 18,angle = 45, hjust = 1),
+          axis.text.y = element_text(size = 18),
+          axis.title.y = element_text(size = 16)) + xlab("")
+}
+
+# Function to plot the barplot of linkage_kbp grouped into categories with closest linkage counted only once per gene
+plot_linkage_kbp_bar <- function(data, count_closest_only = TRUE) {
+  
+  # Filter out rows with NA in linkage_kbp
+  data <- data %>%
+    filter(!is.na(linkage_kbp))
+  
+  # If count_closest_only is TRUE, assign each gene to the category of its closest linkage
+  if (count_closest_only) {
+    data <- data %>%
+      group_by(ensg_id) %>%
+      slice_min(linkage_kbp, n = 1, with_ties = FALSE) %>%  # Keep only the closest linkage, without ties
+      ungroup()
+  }
+  
+  # Create categories based on linkage_kbp ranges
+  linkage_summary <- data %>%
+    mutate(linkage_category = case_when(
+      linkage_kbp <= 5 ~ "0-5 kbp",
+      linkage_kbp > 5 & linkage_kbp <= 50 ~ "5-50 kbp",
+      linkage_kbp > 50 ~ "> 50 kbp"
+    )) %>%
+    # Group by the categories and count how many fall into each category
+    group_by(linkage_category) %>%
+    summarize(count = n()) %>%
+    # Reorder the linkage categories for proper ordering on the x-axis
+    mutate(linkage_category = factor(linkage_category, levels = c("0-5 kbp", "5-50 kbp", "> 50 kbp")))
+  
+  # Create the barplot using ggplot2
+  ggplot(linkage_summary, aes(x = linkage_category, y = count, fill = linkage_category)) +
+    geom_bar(stat = "identity", color = "grey", fill = "grey") +
+    labs(
+      x = "Linkage Distance Category (kbp)",
+      y = "Count",
+      title = ""
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.text.x = element_text(size = 18, angle = 45, hjust = 1),
+          axis.text.y = element_text(size = 18),
+          axis.title.y = element_text(size = 16)) + 
+    xlab("")
+}
+# Simple function to plot boxplot of gene expression variability by linkage distance category
+plot_simple_variability_boxplot <- function(
+    combined_tibble, 
+    rna_data, 
+    bin_ranges = c("0-5 kbp", "5-50 kbp", "> 50 kbp"),
+    add_p_value = FALSE  # New argument to toggle p-value testing
+) {
+  
+  # Create categories based on linkage_kbp ranges
+  pos.targets <- combined_tibble %>%
+    filter(!is.na(linkage_kbp)) %>%  # Remove rows with NA values in linkage_kbp
+    mutate(bin_category = case_when(
+      linkage_kbp <= 5 ~ bin_ranges[1],
+      linkage_kbp > 5 & linkage_kbp <= 50 ~ bin_ranges[2],
+      linkage_kbp > 50 ~ bin_ranges[3]
+    )) %>%
+    filter(ensg_id %in% rownames(rna_data)) %>%
+    ungroup()
+  
+  # Fetch and log-transform RNA expression data
+  expression_data <- log1p(rna_data[pos.targets$ensg_id, ])
+  
+  # Calculate standard deviation (variability) per gene
+  gene_variability <- apply(expression_data, 1, sd)
+  
+  # Add gene variability to the pos.targets tibble
+  pos.targets <- pos.targets %>%
+    mutate(variability = gene_variability[match(ensg_id, rownames(expression_data))])
+  
+  # Ensure correct x-axis order by defining factor levels
+  pos.targets <- pos.targets %>%
+    mutate(bin_category = factor(bin_category, levels = bin_ranges))
+  
+  # Define comparisons (what pairs to test against each other)
+  comparisons <- list(
+    c("0-5 kbp", "5-50 kbp"),
+    c("0-5 kbp", "> 50 kbp"),
+    c("5-50 kbp", "> 50 kbp")
+  )
+  
+  # Start building the boxplot
+  p <- ggplot(pos.targets, aes(x = bin_category, y = variability, fill = bin_category)) +
+    geom_boxplot(fill = "grey") +
+    labs(
+      x = "Linkage Distance Category",
+      y = "Expression Variability (Standard Deviation)",
+      title = ""
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.text.x = element_text(size = 18,angle = 45, hjust = 1),
+          axis.text.y = element_text(size = 18),
+          axis.title.y = element_text(size = 16))  + xlab("")
+  
+  # Add p-value comparisons if add_p_value is TRUE
+  if (add_p_value) {
+    p <- p + stat_compare_means(comparisons = comparisons, method = "t.test", 
+                                label = "p.format", tip.length = 0.03)  # Add p-values with connecting lines
+  }
+  
+  # Print the plot
+  print(p)
+}
+
+# Function to create scatter plot of Tal1 vs target gene expression
+plot_tal1_vs_target_scatter <- function(
+    tal1_ensg_id,        # The ensg_id of Tal1 (e.g., "ENSMUSG00000012356")
+    target_genes,        # A vector of target gene ensg_ids
+    rna_data,            # RNA expression matrix
+    columns = c("CO2", "GA1")  # Columns to use for plotting
+) {
+  
+  # Ensure Tal1 is present in the RNA data
+  if (!tal1_ensg_id %in% rownames(rna_data)) {
+    stop("Tal1 ensg_id not found in rna_data.")
+  }
+  
+  # Ensure the target genes are present in the RNA data
+  valid_targets <- target_genes[target_genes %in% rownames(rna_data)]
+  
+  if (length(valid_targets) == 0) {
+    stop("No valid target genes found in rna_data.")
+  }
+  
+  # Create an empty data frame to store results
+  plot_data <- data.frame()
+  
+  # Extract Tal1 expression values for the selected columns
+  tal1_expression <- rna_data[tal1_ensg_id, columns]
+  
+  # Loop over valid target genes and create scatter plot data
+  for (target_gene in valid_targets) {
+    target_expression <- rna_data[target_gene, columns]
+    
+    # Combine Tal1 and target gene expression into one data frame
+    temp_data <- data.frame(
+      Tal1_expression = tal1_expression,
+      Target_expression = target_expression,
+      Condition = columns,
+      Target_gene = target_gene
+    )
+    
+    # Append to the final plot data
+    plot_data <- rbind(plot_data, temp_data)
+  }
+  
+  # Create the scatter plot
+  ggplot(plot_data, aes(x = Tal1_expression, y = Target_expression, color = Condition)) +
+    geom_point() +
+    facet_wrap(~ Target_gene, scales = "free_y") +  # Create separate panels for each target gene
+    labs(
+      x = "Tal1 Expression (CO2 / GA1)",
+      y = "Target Gene Expression (CO2 / GA1)",
+      title = "Scatter Plot of Tal1 vs Target Gene Expression"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 18,angle = 45, hjust = 1),
+      axis.text.y = element_text(size = 18),
+      axis.title.y = element_text(size = 16)) + xlab("")
+}
+
+# Function to create boxplot of target gene expression levels by linkage distance category
+plot_expression_by_distance_category <- function(
+    combined_tibble,  # Dataframe with target gene information
+    rna_data,         # RNA expression data with genes as columns and samples as rows
+    bin_ranges = c("0-5 kbp", "5-50 kbp", "> 50 kbp")  # Distance bins
+) {
+  
+  # Filter combined_tibble for valid target genes that are present as columns in the RNA data
+  pos.targets <- combined_tibble %>%
+    filter(ensg_id %in% colnames(rna_data) & !is.na(linkage_kbp)) %>%
+    group_by(ensg_id) %>%
+    slice(1) %>%  # Keep only the first occurrence of each ensg_id to avoid duplicates
+    ungroup() %>%
+    mutate(bin_category = case_when(
+      linkage_kbp <= 5 ~ bin_ranges[1],
+      linkage_kbp > 5 & linkage_kbp <= 50 ~ bin_ranges[2],
+      linkage_kbp > 50 ~ bin_ranges[3]
+    ))
+  
+  # Extract the expression data for the filtered target genes
+  expression_data <- rna_data[, pos.targets$ensg_id, drop = FALSE]
+  
+  # Reshape the data for plotting, excluding the Sample column
+  plot_data <- expression_data %>%
+    as.data.frame() %>%
+    mutate(Sample = rownames(rna_data)) %>%
+    pivot_longer(cols = -Sample, names_to = "ensg_id", values_to = "Expression") %>%
+    left_join(pos.targets, by = "ensg_id")
+  
+  # Ensure correct x-axis order by setting factor levels for bin_category
+  plot_data <- plot_data %>%
+    mutate(bin_category = factor(bin_category, levels = bin_ranges))
+  
+  # Create the boxplot
+  ggplot(plot_data, aes(x = bin_category, y = Expression, fill = bin_category)) +
+    geom_boxplot() +
+    labs(
+      x = "Linkage Distance Category",
+      y = "Gene Expression Level",
+      title = "Target Gene Expression by Linkage Distance"
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none")
 }
