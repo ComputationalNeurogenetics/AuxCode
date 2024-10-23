@@ -1838,3 +1838,88 @@ formatGOenrichRes <- function(sampleGOdata,p.val.thr=0.05){
   
   return(list(allRes=allRes,specRes=specRes))
 }
+
+
+ExpandAxes <- function(x, y, expansion_factor = 0.1) {
+  x_range <- range(x)
+  y_range <- range(y)
+  
+  # Expand the range by a given factor (default is 10%)
+  x_expand <- diff(x_range) * expansion_factor
+  y_expand <- diff(y_range) * expansion_factor
+  
+  return(list(x.range = c(x_range[1] - x_expand, x_range[2] + x_expand),
+              y.range = c(y_range[1] - y_expand, y_range[2] + y_expand)))
+}
+
+library(dplyr)
+library(ComplexHeatmap)
+library(circlize)  # Needed for color scaling in ComplexHeatmap
+
+# Define the function to compute hypergeometric p-values between scRNA and scATAC clusters and return heatmap
+hypergeometric_test_clusters <- function(scRNA, scATAC, N, column_order = NULL, row_order = NULL) {
+  
+  # Get the unique clusters from both datasets
+  scRNA_clusters <- unique(scRNA$cluster)
+  scATAC_clusters <- unique(scATAC$cluster)
+  
+  # Initialize a matrix to store the p-values
+  p_value_matrix <- matrix(NA, nrow = length(scRNA_clusters), ncol = length(scATAC_clusters),
+                           dimnames = list(scRNA_clusters, scATAC_clusters))
+  
+  # Loop through each combination of scRNA and scATAC clusters
+  for (scRNA_cluster in scRNA_clusters) {
+    for (scATAC_cluster in scATAC_clusters) {
+      
+      # Get the marker genes for the current scRNA cluster
+      scRNA_genes <- scRNA %>% filter(cluster == scRNA_cluster) %>% pull(gene)
+      
+      # Get the marker genes for the current scATAC cluster
+      scATAC_genes <- scATAC %>% filter(cluster == scATAC_cluster) %>% pull(gene)
+      
+      # Calculate the values for the hypergeometric test
+      K <- length(scRNA_genes)  # Number of marker genes in scRNA cluster
+      n <- length(scATAC_genes) # Number of marker genes in scATAC cluster
+      x <- length(intersect(scRNA_genes, scATAC_genes)) # Number of overlapping genes
+      
+      # Perform the hypergeometric test
+      if (x > 0) {
+        p_value <- phyper(x - 1, K, N - K, n, lower.tail = FALSE)
+      } else {
+        p_value <- 1 # If no overlap, p-value is 1
+      }
+      
+      # Store the result in the matrix
+      p_value_matrix[as.character(scRNA_cluster), as.character(scATAC_cluster)] <- p_value
+    }
+  }
+  
+  # Step 2: Transform the p-values to -log10(p-value) for better visualization
+  log_p_value_matrix <- -log10(p_value_matrix)
+  
+  # Step 3: Reorder columns based on the specified order
+  if (!is.null(column_order)) {
+    log_p_value_matrix <- log_p_value_matrix[, column_order, drop = FALSE]
+  }
+  
+  # Step 4: Reorder rows based on the specified order
+  if (!is.null(row_order)) {
+    log_p_value_matrix <- log_p_value_matrix[row_order, , drop = FALSE]
+  }
+  
+  # Step 5: Create a heatmap with ComplexHeatmap using the log-transformed p-values
+  heatmap <- Heatmap(log_p_value_matrix, name = "-log10(p-value)",
+                     col = colorRamp2(c(0, max(log_p_value_matrix, na.rm = TRUE)), c("white", "red")),
+                     cluster_rows = FALSE,  # Disable clustering of rows
+                     cluster_columns = FALSE,  # Disable clustering of columns
+                     row_order = row_order,  # Explicit row order
+                     column_order = column_order,  # Explicit column order
+                     row_names_gp = gpar(fontsize = 12), 
+                     column_names_gp = gpar(fontsize = 12))
+  
+  # Step 6: Return a list with the matrix and heatmap
+  return(list(
+    p_value_matrix = p_value_matrix,
+    heatmap = heatmap
+  ))
+}
