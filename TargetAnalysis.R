@@ -463,7 +463,7 @@ getTargets_rV2 <- function(TF_name,con){
   if (TF_name!="Tal1"){
     dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
     dbExecute(con, paste("CREATE TEMP TABLE filtered_tobias AS
-    SELECT * FROM Tobias WHERE TF_gene_name = '",toupper(TF_name),"';",sep=""))
+    SELECT * FROM tobias WHERE TF_gene_name = '",toupper(TF_name),"';",sep=""))
     
   targetQuery <- paste("SELECT 
     gm.gene_name,
