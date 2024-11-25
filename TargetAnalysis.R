@@ -355,7 +355,7 @@ getTargets_SR <- function(TF_name,con){
   if (TF_name!="Tal1"){
   dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
   dbExecute(con, paste("CREATE TEMP TABLE filtered_tobias AS
-    SELECT * FROM Tobias WHERE TF_gene_name = '",toupper(TF_name),"';",sep=""))
+    SELECT * FROM tobias WHERE TF_gene_name = '",toupper(TF_name),"';",sep=""))
   
   targetQuery <- paste("SELECT 
     gm.gene_name,
@@ -408,7 +408,7 @@ SELECT
         WHEN TFBS_name = 'TAL1.H12CORE.2.P.B_TAL1.H12CORE.2.P.B' THEN 1 
         ELSE 0 
      END) AS cond_2
-FROM Tobias
+FROM tobias
 WHERE TF_gene_name = 'TAL1'
   AND (TFBS_name IN ('TAL1.H12CORE.0.P.B_TAL1.H12CORE.0.P.B', 
                      'TAL1.H12CORE.1.P.B_TAL1.H12CORE.1.P.B', 
@@ -517,7 +517,7 @@ SELECT
         WHEN TFBS_name = 'TAL1.H12CORE.2.P.B_TAL1.H12CORE.2.P.B' THEN 1 
         ELSE 0 
      END) AS cond_2
-FROM Tobias
+FROM tobias
 WHERE TF_gene_name = 'TAL1'
   AND (TFBS_name IN ('TAL1.H12CORE.0.P.B_TAL1.H12CORE.0.P.B', 
                      'TAL1.H12CORE.1.P.B_TAL1.H12CORE.1.P.B', 
@@ -575,7 +575,7 @@ getTargets_rV2_feature_level <- function(TF_name,con){
     
     dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
     dbExecute(con, paste("CREATE TEMP TABLE filtered_tobias AS
-    SELECT * FROM Tobias WHERE TF_gene_name = '",toupper(TF_name.tobias),"';",sep=""))
+    SELECT * FROM tobias WHERE TF_gene_name = '",toupper(TF_name.tobias),"';",sep=""))
     
     targetQuery <- paste("SELECT 
     gm.gene_name,
@@ -624,7 +624,7 @@ getTargets_rV2_feature_level_v3 <- function(TF_name,con){
   
   dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
   dbExecute(con, paste("CREATE TEMP TABLE filtered_tobias AS
-    SELECT * FROM Tobias WHERE TF_gene_name = '",toupper(TF_name.tobias),"';",sep=""))
+    SELECT * FROM tobias WHERE TF_gene_name = '",toupper(TF_name.tobias),"';",sep=""))
   
   targetQuery <- paste("SELECT 
     gm.gene_name,
@@ -673,7 +673,7 @@ getTargets_rV2_feature_level_v2 <- function(TF_name, con, include_extra_columns 
   # Create temporary table for the TF
   dbExecute(con, "DROP TABLE IF EXISTS filtered_tobias;")
   dbExecute(con, paste("CREATE TEMP TABLE filtered_tobias AS
-                        SELECT * FROM Tobias 
+                        SELECT * FROM tobias 
                         WHERE TF_gene_name = '", toupper(TF_name.tobias), "';", sep = ""))
   
   # Build the query dynamically
