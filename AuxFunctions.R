@@ -1563,6 +1563,155 @@ findEChO <- function(EChO.matrix, span, foci, EChO.thr=120){
   EChO.true.i <- which(rowSums(EChO.matrix<120)>0)
   return(list(EChO.true.i=EChO.true.i,coordinates=coordinates[EChO.true.i]))
 }
+
+plotSmoothedAccessibility_v2 <- function(dataset, covariate.genes.to.plot, features.df, gene.feat.name,gene_id2name, gene_name2id, rV2=TRUE, drop.non.linked=FALSE){
+  
+  # Map gene symbols to Ensembl IDs using the hash
+  covariate.ids.to.plot <- sapply(covariate.genes.to.plot, function(f) { gene_name2id[[f]] })
+  
+  # Check for NAs (genes not found in the mapping)
+  if (any(is.na(covariate.ids.to.plot))) {
+    missing_genes <- covariate.genes.to.plot[is.na(covariate.ids.to.plot)]
+    stop("The following genes were not found in gene_name2id mapping: ", paste(missing_genes, collapse = ", "))
+  }
+  
+  # Ensure covariate.ids.to.plot is a character vector
+  covariate.ids.to.plot <- as.character(covariate.ids.to.plot)
+  
+  # Fetch peaks data
+  DefaultAssay(dataset) <- "peaks"
+  features.to.show <- features.df$feature
+  peaks.data <- FetchData(dataset, vars = features.to.show)
+  features.granges.gr <- StringToGRanges(features.to.show)
+  
+  # Fetch expression data using Ensembl IDs
+  DefaultAssay(dataset) <- "RNA"
+  expression.data <- FetchData(dataset, vars = covariate.ids.to.plot)
+  
+  # Assign gene symbols as column names
+  colnames(expression.data) <- covariate.genes.to.plot
+  
+  # Prepare covariate data
+  eoi <- data.frame(expression.data)
+  eoi$pseudotime <- dataset$VIA_pseudotime
+  eoi <- eoi %>% arrange(pseudotime)
+  
+  # Prepare peaks data
+  peaks.data.ss <- peaks.data
+  peaks.data.ss$pseudotime <- dataset$VIA_pseudotime
+  peaks.data.ss$label <- dataset$rv2.lineage
+  peaks.data.ss$barcode <- rownames(peaks.data.ss)
+  peaks.data.ss <- peaks.data.ss %>% arrange(pseudotime)
+  
+  # Add covariate gene expression to peaks data
+  peaks.data.ss <- cbind(peaks.data.ss, eoi[covariate.genes.to.plot])
+  
+  # Calculate rolling mean for covariate genes
+  covariate.rolled.means <- peaks.data.ss %>%
+    dplyr::select(all_of(covariate.genes.to.plot)) %>%
+    zoo::rollapply(width = 6, by = 1, FUN = mean, align = "center", by.column = TRUE, fill = c(NA, NA, NA))
+  colnames(covariate.rolled.means) <- paste(colnames(covariate.rolled.means), "_rolled", sep = "")
+  peaks.data.ss <- cbind(peaks.data.ss, covariate.rolled.means)
+  
+  # Define color mapping for pseudotime
+  cols_pseudotime <- list(pseudotime = viridis::viridis(length(unique(peaks.data.ss$pseudotime))))
+  names(cols_pseudotime$pseudotime) <- unique(peaks.data.ss$pseudotime)
+  
+  # Prepare row labels with adjusted TSS distance
+  feature_labels <- sapply(features.df$Gene_TSS_distance, function(dist){
+    if (is.na(dist)) {
+      return(NA)
+    } else if (dist < 0) {
+      paste0(gene.feat.name," +", round(abs(dist) / 1000, 1), "kb")
+    } else {
+      paste0(gene.feat.name," -", round(abs(dist) / 1000, 1), "kb")
+    }
+  })
+  
+  # Ensure the feature labels correspond to the order of features.to.show
+  names(feature_labels) <- features.df$feature
+  feature_labels <- feature_labels[features.to.show]
+  
+  # Adjust data based on rV2 value
+  if (rV2){
+    # rV2 is TRUE
+    # Include PRO1, PRO2, CO1, CO2, and all GA groups
+    ga_labels <- grep("^GA", unique(peaks.data.ss$label), value = TRUE)
+    included_labels <- c("PRO1", "PRO2", "CO1", "CO2", ga_labels)
+  } else {
+    # rV2 is FALSE
+    # Include PRO1, PRO2, CO1, CO2, and all GL groups
+    gl_labels <- grep("^GL", unique(peaks.data.ss$label), value = TRUE)
+    included_labels <- c("PRO1", "PRO2", "CO1", "CO2", gl_labels)
+  }
+  
+  # Subset the data for included labels
+  data_subset <- peaks.data.ss %>% filter(label %in% included_labels)
+  
+  # Ensure labels are factors with levels in the desired order
+  data_subset$label <- factor(data_subset$label, levels = included_labels)
+  
+  # Scale and smooth data
+  data.scaled <- dplyr::select(data_subset, all_of(features.to.show)) %>%
+    as.matrix() %>% scale(scale = TRUE, center = TRUE)
+  data.scaled[!is.finite(data.scaled)] <- 0
+  data.scaled <- apply(data.scaled, MARGIN = 2, FUN = function(vec){
+    smoo <- smooth.spline(vec, cv = FALSE, penalty = 0.8)
+    smoo$y
+  })
+  rownames(data.scaled) <- data_subset$barcode
+  
+  # Prepare annotations
+  labels <- data_subset$label
+  
+  ha.bot <- HeatmapAnnotation(
+    pseudotime = data_subset$pseudotime,
+    col = cols_pseudotime,
+    show_legend = FALSE,
+    annotation_name_gp = grid::gpar(fontsize = 20),
+    simple_anno_size = unit(2, "cm")
+  )
+  
+  cov.data <- dplyr::select(data_subset, ends_with("_rolled"))
+  colnames(cov.data) <- covariate.genes.to.plot
+  expression_col_fun <- lapply(seq_along(covariate.genes.to.plot), function(i){
+    gene <- covariate.genes.to.plot[i]
+    colorRamp2(c(min(cov.data[[i]], na.rm = TRUE), max(cov.data[[i]], na.rm = TRUE)), c("white", "orange"))
+  })
+  names(expression_col_fun) <- covariate.genes.to.plot
+  
+  ha.top <- HeatmapAnnotation(
+    df = cov.data,
+    annotation_label = covariate.genes.to.plot,
+    col = expression_col_fun,
+    simple_anno_size = unit(3, "cm"),
+    height = unit(8, "cm"),
+    annotation_name_gp = grid::gpar(fontsize = 20),
+    gp = grid::gpar(fontsize = 20)
+  )
+  
+  # Create heatmap
+  p <- Heatmap(
+    t(data.scaled) + 1,
+    name = "Accessibility",
+    show_column_names = FALSE,
+    show_row_names = TRUE,
+    row_labels = feature_labels,
+    bottom_annotation = ha.bot,
+    top_annotation = ha.top,
+    cluster_rows = FALSE,
+    column_split = labels,
+    cluster_columns = FALSE,
+    cluster_column_slices = FALSE,
+    col = viridis::magma(100),
+    use_raster = TRUE,
+    column_names_gp = grid::gpar(fontsize = 20),
+    row_names_gp = grid::gpar(fontsize = 15),
+    column_title_gp = grid::gpar(fontsize = 20)
+  )
+  
+  return(p)
+}
   
 plotSmoothedAccessibility <- function(dataset, covariate.genes.to.plot, region.of.interest, rV2=TRUE, drop.non.linked=FALSE){
   
