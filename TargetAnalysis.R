@@ -703,8 +703,6 @@ WHERE
     AND (",bound_conditions,")
     AND tb.w_mean_cons > 0.5", sep="")
   
-  print(targetQuery)
-  
   target.data <- as_tibble(dbGetQuery(con, targetQuery))
   targets <- unique(pull(target.data, gene_name))
   targets_gene_id <- unique(pull(target.data, ensg_id))
