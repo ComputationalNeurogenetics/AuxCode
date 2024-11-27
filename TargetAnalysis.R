@@ -700,8 +700,10 @@ WHERE
     tb.TF_gene_name = '",toupper(TF_name.tobias),"'
     AND ABS(li.zscore) > 2
     AND li.pvalue < 0.01 
-    AND ('",bound_conditions,"')
+    AND (",bound_conditions,")
     AND tb.w_mean_cons > 0.5", sep="")
+  
+  print(targetQuery)
   
   target.data <- as_tibble(dbGetQuery(con, targetQuery))
   targets <- unique(pull(target.data, gene_name))
