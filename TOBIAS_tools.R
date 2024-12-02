@@ -962,7 +962,7 @@ extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.d
 }
 
 
-fetch.regulators <- function(db.name, gene_name, group_name, zscore.abs.thr=2, full.data=FALSE,acc.thr=0, bound=T){
+fetch.regulators <- function(db.name, gene_name, group_name, zscore.abs.thr=2, full.data=FALSE,acc.thr=0){
   require(dbplyr)
   require(DBI)
   con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = db.name)
@@ -971,12 +971,8 @@ fetch.regulators <- function(db.name, gene_name, group_name, zscore.abs.thr=2, f
   if(!any(group_name %in% c("PRO1_2","CO1_2","GA1_2","GA3_4","GA5_6","GL1_2","GL3_4","GL5"))){stop("group_name must be one of the following: PRO1_2, CO1_2, GA1_2, GA3_4, GA5_6, GL1_2, GL3_4, GL5")}
   
   if (!is.null(zscore.abs.thr)){
-    if (bound){
-      query_pos<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links_s as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.abs.thr,'', sep="")
-      query_neg<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links_s as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore < -',zscore.abs.thr,'', sep="")
-    } else {
-      query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, acc as ac, links as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND ABS(links.zscore)>',zscore.abs.thr,'', sep="")
-    }
+    query_pos<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links_s as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.abs.thr,'', sep="")
+    query_neg<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links_s as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore < -',zscore.abs.thr,'', sep="")
   } else {
     print("zscore.thr is NULL, ignoring gene_name and fetching all bound TF events for the group and exp condition")
     query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, gene_metadata as gm WHERE tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND gm.gene_name="',gene_name,'"', sep="")
