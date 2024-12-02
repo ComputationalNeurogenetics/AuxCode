@@ -972,8 +972,8 @@ fetch.regulators <- function(db.name, gene_name, group_name, zscore.abs.thr=2, f
   
   if (!is.null(zscore.abs.thr)){
     if (bound){
-      query_pos<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.abs.thr,'', sep="")
-      query_neg<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore < -',zscore.abs.thr,'', sep="")
+      query_pos<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links_s as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.abs.thr,'', sep="")
+      query_neg<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links_s as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore < -',zscore.abs.thr,'', sep="")
     } else {
       query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, acc as ac, links as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND ABS(links.zscore)>',zscore.abs.thr,'', sep="")
     }
@@ -983,8 +983,8 @@ fetch.regulators <- function(db.name, gene_name, group_name, zscore.abs.thr=2, f
   }
   data.tmp.1_pos <- as_tibble(dbGetQuery(con.obj, query_pos),.name_repair = "universal")
   data.tmp.1_neg <- as_tibble(dbGetQuery(con.obj, query_neg),.name_repair = "universal")
-  data.tmp.1_pos <- rename(data.tmp.1_pos, "features...69"="features")
-  data.tmp.1_neg <- rename(data.tmp.1_neg, "features...69"="features")
+  data.tmp.1_pos <- dplyr::rename(data.tmp.1_pos, "features"="features...69")
+  data.tmp.1_neg <- dplyr::rename(data.tmp.1_neg, "features"="features...69")
   data.tmp.1 <- rbind(data.tmp.1_pos,data.tmp.1_neg)
   data.tmp.1$direction <- ifelse(data.tmp.1$zscore>0,1,-1)
   data.tmp.1.out <- data.tmp.1 %>% group_by(TF_gene_name, features, direction) %>% summarise(linkpeaks_zscore=mean(zscore),count=dplyr::n())
