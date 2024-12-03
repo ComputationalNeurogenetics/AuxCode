@@ -1777,12 +1777,11 @@ plotSmoothedAccessibility_v2 <- function(
   # Handle values above max_accessibility_value based on the new argument
   if (assign_above_max_to_white) {
     # Do not cap the data
-    # Set minimum and maximum values for the color mapping
-    min_accessibility_value <- min(data.scaled, na.rm = TRUE)
+    # Set minimum value for the color mapping to 0
+    min_accessibility_value <- 0
     max_data_value <- max(data.scaled, na.rm = TRUE)
     
-    # Create a color mapping function for Accessibility using viridis plasma scale
-    # Map values up to max_accessibility_value, values above will be assigned NA
+    # Create a color mapping function for Accessibility from 0 to max_accessibility_value
     accessibility_col_fun <- colorRamp2(
       seq(min_accessibility_value, max_accessibility_value, length.out = 100),
       viridis::plasma(100)
@@ -1798,17 +1797,17 @@ plotSmoothedAccessibility_v2 <- function(
     heatmap_legend_param <- list(
       title = paste0("Accessibility\n(values above ", max_accessibility_value, " shown in white)"),
       at = c(min_accessibility_value, max_accessibility_value),
-      labels = c(round(min_accessibility_value, 2), round(max_accessibility_value, 2)),
+      labels = c("0", round(max_accessibility_value, 2)),
       na_col = na_col_value
     )
   } else {
     # Cap the data at max_accessibility_value
     data.scaled[data.scaled > max_accessibility_value] <- max_accessibility_value
     
-    # Set minimum and maximum values for the color mapping
-    min_accessibility_value <- min(data.scaled, na.rm = TRUE)
+    # Set minimum value for the color mapping to 0
+    min_accessibility_value <- 0
     
-    # Create a color mapping function for Accessibility using viridis plasma scale
+    # Create a color mapping function for Accessibility from 0 to max_accessibility_value
     accessibility_col_fun <- colorRamp2(
       seq(min_accessibility_value, max_accessibility_value, length.out = 100),
       viridis::plasma(100)
@@ -1821,7 +1820,7 @@ plotSmoothedAccessibility_v2 <- function(
     heatmap_legend_param <- list(
       title = "Accessibility",
       at = c(min_accessibility_value, max_accessibility_value),
-      labels = c(round(min_accessibility_value, 2), round(max_accessibility_value, 2))
+      labels = c("0", round(max_accessibility_value, 2))
     )
   }
   
