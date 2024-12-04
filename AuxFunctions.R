@@ -2225,3 +2225,110 @@ PlotRNAFeature <- function(s.data,feature){
   return(f.p)
 }
 
+# Function to fetch links data and construct GRanges with coordinate filtering
+fetchGRangesLinks <- function(db_path, zscore_threshold = 2, pvalue_threshold = 0.01, coordinate_filter = NULL) {
+  # Connect to SQLite database
+  con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
+  
+  # Initialize the WHERE clause
+  where_clause <- paste0(
+    "ABS(zscore) >= ", zscore_threshold, 
+    " AND pvalue <= ", pvalue_threshold
+  )
+  
+  # Add coordinate filter if provided
+  if (!is.null(coordinate_filter)) {
+    coord_parts <- strsplit(coordinate_filter, "[-:]")[[1]]
+    if (length(coord_parts) != 3) {
+      stop("Invalid coordinate format. Use 'chrN-start-end'.")
+    }
+    
+    chr <- coord_parts[1]
+    start <- as.numeric(coord_parts[2])
+    end <- as.numeric(coord_parts[3])
+    
+    coord_filter <- paste0(
+      "seqnames = '", chr, "' AND start >= ", start, " AND end <= ", end
+    )
+    where_clause <- paste0(where_clause, " AND ", coord_filter)
+  }
+  
+  # Query the links_s table with thresholds and optional coordinate filter
+  query <- paste0(
+    "SELECT seqnames, start, end, strand, score, ensg_id AS gene, feature AS peak, zscore, pvalue ",
+    "FROM links_s ",
+    "WHERE ", where_clause
+  )
+  
+  # Fetch data
+  links_data <- dbGetQuery(con, query)
+  
+  # Ensure the database connection is closed
+  dbDisconnect(con)
+  
+  # Construct GRanges object
+  gr <- GRanges(
+    seqnames = Rle(links_data$seqnames),
+    ranges = IRanges(start = links_data$start, end = links_data$end),
+    strand = Rle(links_data$strand),
+    score = links_data$score,
+    gene = links_data$gene,
+    peak = links_data$peak,
+    zscore = links_data$zscore,
+    pvalue = links_data$pvalue
+  )
+  
+  return(gr)
+}
+
+`%over%` <- function(query, subject) {
+  if (!inherits(query, "GRanges") || !inherits(subject, "GRanges")) {
+    stop("Both arguments must be GRanges objects.")
+  }
+  overlaps <- findOverlaps(query, subject)
+  seq_along(query) %in% queryHits(overlaps)
+}
+
+fetchGRangesFromCtData <- function(db.name, gene.of.interest, coordinate_filter) {
+  # Ensure coordinate_filter is a valid GRanges object
+  if (!inherits(coordinate_filter, "GRanges")) {
+    stop("coordinate_filter must be a GRanges object")
+  }
+  
+  # Extract range details from coordinate_filter
+  coord_chr <- as.character(seqnames(coordinate_filter))
+  coord_start <- start(coordinate_filter)
+  coord_end <- end(coordinate_filter)
+  
+  # Establish connection to the SQLite database
+  con.tmp <- DBI::dbConnect(RSQLite::SQLite(), dbname = db.name)
+  
+  # Construct the SQL query to fetch data
+  query <- paste0(
+    "SELECT chr, start, end FROM ct_data WHERE ",
+    "target_gene_name = '", gene.of.interest, "' AND ",
+    "chr = '", coord_chr, "' AND ",
+    "start >= ", coord_start, " AND ",
+    "end <= ", coord_end
+  )
+  
+  # Execute the query
+  ct_data <- dbGetQuery(con.tmp, query)
+  
+  # Disconnect from the database
+  dbDisconnect(con.tmp)
+  
+  # Check if data is returned
+  if (nrow(ct_data) == 0) {
+    warning("No data found for the specified criteria")
+    return(GRanges())
+  }
+  
+  # Create GRanges object
+  gr <- GRanges(
+    seqnames = ct_data$chr,
+    ranges = IRanges(start = ct_data$start, end = ct_data$end)
+  )
+  
+  return(gr)
+}
