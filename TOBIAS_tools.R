@@ -961,36 +961,138 @@ extract.factors <- function(db.name, gene_name, group_name, zscore.thr=0, full.d
   }
 }
 
-
-fetch.regulators <- function(db.name, gene_name, group_name, zscore.abs.thr=2, full.data=FALSE,acc.thr=0){
+fetch.regulators_v2 <- function(db.name, gene_name, group_name, zscore.abs.thr = 2, pvalue.thr = 0.01, full.data = FALSE, acc.thr = 0) {
   require(dbplyr)
   require(DBI)
+  
   con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = db.name)
   
-  if(!length(group_name)==1){stop("Give only one group_name at the time")}
-  if(!any(group_name %in% c("PRO1_2","CO1_2","GA1_2","GA3_4","GA5_6","GL1_2","GL3_4","GL5"))){stop("group_name must be one of the following: PRO1_2, CO1_2, GA1_2, GA3_4, GA5_6, GL1_2, GL3_4, GL5")}
-  
-  if (!is.null(zscore.abs.thr)){
-    query_pos<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links_s as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore>',zscore.abs.thr,'', sep="")
-    query_neg<-paste('SELECT tb.*,ac.*,links.* FROM tobias as tb, exp as exp, acc as ac, links_s as links, gene_metadata as gm WHERE tb.features==ac.features AND (ac.',group_name,'>',acc.thr,') AND tb.features==links.feature AND tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND links.ensg_id=gm.ensg_id AND gm.gene_name="',gene_name,'" AND links.zscore < -',zscore.abs.thr,'', sep="")
-  } else {
-    print("zscore.thr is NULL, ignoring gene_name and fetching all bound TF events for the group and exp condition")
-    query<-paste('SELECT tb.* FROM tobias as tb, exp as exp, gene_metadata as gm WHERE tb.w_mean_cons>0.5 AND exp.ensg_id=tb.ensg_id AND (tb.',group_name,'_bound=1) AND (exp.',group_name,'>1.2) AND gm.gene_name="',gene_name,'"', sep="")
+  if (!length(group_name) == 1) {
+    stop("Give only one group_name at the time")
   }
-  data.tmp.1_pos <- as_tibble(dbGetQuery(con.obj, query_pos),.name_repair = "universal")
-  data.tmp.1_neg <- as_tibble(dbGetQuery(con.obj, query_neg),.name_repair = "universal")
-  data.tmp.1_pos <- dplyr::rename(data.tmp.1_pos, "features"="features...69")
-  data.tmp.1_neg <- dplyr::rename(data.tmp.1_neg, "features"="features...69")
-  data.tmp.1 <- rbind(data.tmp.1_pos,data.tmp.1_neg)
-  data.tmp.1$direction <- ifelse(data.tmp.1$zscore>0,1,-1)
-  data.tmp.1.out <- data.tmp.1 %>% group_by(TF_gene_name, features, direction) %>% summarise(linkpeaks_zscore=mean(zscore),count=dplyr::n())
-
-  if (!full.data){
-    return(data.tmp.1.out %>% dplyr::select(TF_gene_name,count,features,linkpeaks_zscore,direction))
+  if (!any(group_name %in% c("PRO1_2", "CO1_2", "GA1_2", "GA3_4", "GA5_6", "GL1_2", "GL3_4", "GL5"))) {
+    stop("group_name must be one of the following: PRO1_2, CO1_2, GA1_2, GA3_4, GA5_6, GL1_2, GL3_4, GL5")
+  }
+  
+  construct_query <- function(direction) {
+    paste0(
+      "SELECT tb.features, gm.gene_name AS TF_gene_name, links.zscore, links.feature, links.pvalue
+    FROM tobias AS tb
+    JOIN links_s AS links ON tb.features = links.feature
+    JOIN acc AS ac ON tb.features = ac.features
+    JOIN exp AS exp ON tb.ensg_id = exp.ensg_id
+    JOIN gene_metadata AS gm ON tb.ensg_id = gm.ensg_id
+    WHERE links.ensg_id = (
+      SELECT ensg_id
+      FROM gene_metadata
+      WHERE gene_name = '", gene_name, "'
+    )
+    AND links.zscore ", ifelse(direction == "pos", "> ", "< -"), zscore.abs.thr, "
+    AND links.pvalue < ", pvalue.thr, "
+    AND tb.w_mean_cons > 0.5
+    AND ac.", group_name, " > ", acc.thr, "
+    AND exp.", group_name, " > 1.2
+    AND tb.", group_name, "_bound = 1;"
+    )
+  }
+  
+  query_pos <- construct_query("pos")
+  query_neg <- construct_query("neg")
+ 
+  # Fetch and validate data
+  data.tmp.1_pos <- as_tibble(dbGetQuery(con.obj, query_pos), .name_repair = "universal")
+  data.tmp.1_neg <- as_tibble(dbGetQuery(con.obj, query_neg), .name_repair = "universal")
+  
+  data.tmp.1 <- bind_rows(
+    dplyr::mutate(data.tmp.1_pos, direction = 1),
+    dplyr::mutate(data.tmp.1_neg, direction = -1)
+  )
+  
+  # Summarize the data
+  data.tmp.1.out <- data.tmp.1 %>%
+    group_by(TF_gene_name, features, direction) %>%
+    summarise(
+      linkpeaks_zscore = mean(zscore[zscore * direction > 0], na.rm = TRUE), # Include only valid z-scores
+      linkpeaks_pvalue = mean(pvalue, na.rm = TRUE),
+      count = dplyr::n(),
+      .groups = "drop"
+    )
+  
+  if (!full.data) {
+    return(data.tmp.1.out %>% dplyr::select(TF_gene_name, count, features, linkpeaks_zscore, linkpeaks_pvalue, direction))
   } else {
     return(data.tmp.1)
   }
 }
+
+fetch.regulators_v2_old <- function(db.name, gene_name, group_name, zscore.abs.thr = 2, pvalue.thr = 0.01, full.data = FALSE, acc.thr = 0) {
+  require(dbplyr)
+  require(DBI)
+  
+  con.obj <- DBI::dbConnect(RSQLite::SQLite(), dbname = db.name)
+  
+  if (!length(group_name) == 1) {
+    stop("Give only one group_name at the time")
+  }
+  if (!any(group_name %in% c("PRO1_2", "CO1_2", "GA1_2", "GA3_4", "GA5_6", "GL1_2", "GL3_4", "GL5"))) {
+    stop("group_name must be one of the following: PRO1_2, CO1_2, GA1_2, GA3_4, GA5_6, GL1_2, GL3_4, GL5")
+  }
+  
+  construct_query <- function(direction) {
+    paste0(
+      "WITH linked_features AS (
+        SELECT DISTINCT feature
+        FROM links_s
+        WHERE ensg_id = (
+          SELECT ensg_id
+          FROM gene_metadata
+          WHERE gene_name = '", gene_name, "'
+        )
+        AND zscore ", ifelse(direction == "pos", ">", "<"), " ", zscore.abs.thr, "
+        AND pvalue < ", pvalue.thr, "
+      )
+      SELECT tb.features, gm.gene_name AS TF_gene_name, links.zscore, links.feature, links.pvalue
+      FROM tobias AS tb
+      JOIN linked_features AS lf ON tb.features = lf.feature
+      JOIN acc AS ac ON tb.features = ac.features
+      JOIN exp AS exp ON tb.ensg_id = exp.ensg_id
+      JOIN links_s AS links ON tb.features = links.feature
+      JOIN gene_metadata AS gm ON tb.ensg_id = gm.ensg_id
+      WHERE tb.w_mean_cons > 0.5
+        AND ac.", group_name, " > ", acc.thr, "
+        AND exp.", group_name, " > 1.2
+        AND tb.", group_name, "_bound = 1;"
+    )
+  }
+  
+  query_pos <- construct_query("pos")
+  query_neg <- construct_query("neg")
+  
+  data.tmp.1_pos <- as_tibble(dbGetQuery(con.obj, query_pos), .name_repair = "universal")
+  data.tmp.1_neg <- as_tibble(dbGetQuery(con.obj, query_neg), .name_repair = "universal")
+  
+  data.tmp.1 <- bind_rows(
+    dplyr::mutate(data.tmp.1_pos, direction = 1),
+    dplyr::mutate(data.tmp.1_neg, direction = -1)
+  )
+  
+  # Summarize the data
+  data.tmp.1.out <- data.tmp.1 %>%
+    group_by(TF_gene_name, features, direction) %>%
+    summarise(
+      linkpeaks_zscore = mean(zscore, na.rm = TRUE),
+      linkpeaks_pvalue=mean(pvalue, na.rm = TRUE),
+      count = dplyr::n(),
+      .groups = "drop"
+    )
+  
+  if (!full.data) {
+    return(data.tmp.1.out %>% dplyr::select(TF_gene_name, count, features, linkpeaks_zscore, linkpeaks_pvalue,direction))
+  } else {
+    return(data.tmp.1)
+  }
+}
+
 
 plotCommonAcc <- function(db.name = db.name, group_name, selector_genes, zscore.thr,acc.thr){
   require(dbplyr)
