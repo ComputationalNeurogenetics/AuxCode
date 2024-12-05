@@ -1564,6 +1564,7 @@ findEChO <- function(EChO.matrix, span, foci, EChO.thr=120){
   return(list(EChO.true.i=EChO.true.i,coordinates=coordinates[EChO.true.i]))
 }
 
+# Define the function
 plotSmoothedAccessibility_v2 <- function(
     dataset,
     covariate.genes.to.plot,
@@ -1571,11 +1572,11 @@ plotSmoothedAccessibility_v2 <- function(
     gene.feat.name,
     gene_id2name,
     gene_name2id,
-    rV2 = TRUE,
+    GABA = TRUE,                      # Changed argument name from rV2 to GABA
     drop.non.linked = FALSE,
     unify_expression_scale = FALSE,
-    max_accessibility_value = 5,       # Parameter to set the max accessibility value
-    assign_above_max_to_white = FALSE  # New argument to control behavior for values above max
+    max_accessibility_value = 5,      # Parameter to set the max accessibility value
+    assign_above_max_to_white = FALSE # New argument to control behavior for values above max
 ) {
   # Map gene symbols to Ensembl IDs using the gene_name2id mapping
   covariate.ids.to.plot <- sapply(covariate.genes.to.plot, function(f) {
@@ -1595,35 +1596,30 @@ plotSmoothedAccessibility_v2 <- function(
   covariate.ids.to.plot <- as.character(covariate.ids.to.plot)
   
   # Fetch peaks data
-  DefaultAssay(dataset) <- "peaks"
+  Seurat::DefaultAssay(dataset) <- "peaks"
   features.to.show <- features.df$feature  # Ensure the same order as features.df
-  peaks.data <- FetchData(dataset, vars = features.to.show)
+  peaks.data <- Seurat::FetchData(dataset, vars = features.to.show)
   
   # Fetch expression data using Ensembl IDs
-  DefaultAssay(dataset) <- "RNA"
-  expression.data <- FetchData(dataset, vars = covariate.ids.to.plot)
+  Seurat::DefaultAssay(dataset) <- "RNA"
+  expression.data <- Seurat::FetchData(dataset, vars = covariate.ids.to.plot)
   
   # Assign gene symbols as column names
   colnames(expression.data) <- covariate.genes.to.plot
   
-  # Prepare covariate data
-  eoi <- data.frame(expression.data)
-  eoi$pseudotime <- dataset$VIA_pseudotime
-  eoi <- eoi %>% arrange(pseudotime)
-  
   # Prepare peaks data
   peaks.data.ss <- peaks.data
   peaks.data.ss$pseudotime <- dataset$VIA_pseudotime
-  peaks.data.ss$label <- dataset$rv2.lineage
+  peaks.data.ss$label <- dataset$rv2.lineage  # Corrected label assignment
   peaks.data.ss$barcode <- rownames(peaks.data.ss)
-  peaks.data.ss <- peaks.data.ss %>% arrange(pseudotime)
+  peaks.data.ss <- peaks.data.ss %>% dplyr::arrange(pseudotime)
   
   # Add covariate gene expression to peaks data
-  peaks.data.ss <- cbind(peaks.data.ss, eoi[covariate.genes.to.plot])
+  peaks.data.ss <- cbind(peaks.data.ss, expression.data[rownames(peaks.data.ss), ])
   
   # Calculate rolling mean for covariate genes
   covariate.rolled.means <- peaks.data.ss %>%
-    dplyr::select(all_of(covariate.genes.to.plot)) %>%
+    dplyr::select(dplyr::all_of(covariate.genes.to.plot)) %>%
     zoo::rollapply(
       width = 6,
       by = 1,
@@ -1656,25 +1652,67 @@ plotSmoothedAccessibility_v2 <- function(
   names(feature_labels) <- features.df$feature
   feature_labels <- feature_labels[features.to.show]
   
-  # Adjust data based on rV2 value
-  if (rV2) {
-    ga_labels <- unique(peaks.data.ss$label[grepl("^GA", peaks.data.ss$label)])
+  # Scale and smooth main heatmap data BEFORE subsetting
+  data.scaled.tmp <- peaks.data.ss %>%
+    dplyr::select(dplyr::all_of(features.to.show)) %>%
+    as.matrix()
+  data.scaled.tmp <- scale(data.scaled.tmp, scale = TRUE, center = TRUE)
+  data.scaled.tmp[!is.finite(data.scaled.tmp)] <- 0
+  
+  # Modify the smoothing function to handle NAs and ensure the output has the same length as the input
+  smoothed_data <- apply(data.scaled.tmp, MARGIN = 2, FUN = function(vec) {
+    # Identify indices of non-NA values
+    idx <- which(!is.na(vec))
+    if (length(idx) < 4) {
+      # Not enough data to smooth, return original vector
+      return(vec)
+    } else {
+      # Smooth the non-NA values
+      smoo <- stats::smooth.spline(x = idx, y = vec[idx], cv = FALSE, spar = 0.8)
+      # Predict at the original indices
+      smoo_pred <- predict(smoo, x = 1:length(vec))
+      # Extract the smoothed values
+      smoothed_vec <- smoo_pred$y
+      return(smoothed_vec)
+    }
+  })
+  
+  # Transpose smoothed_data to have features as rows and cells as columns
+  smoothed_data <- t(smoothed_data) + 1  # Transpose and shift data as before
+  
+  # Assign rownames and colnames correctly
+  rownames(smoothed_data) <- features.to.show          # Features as row names
+  colnames(smoothed_data) <- peaks.data.ss$barcode     # Barcodes as column names
+  
+  # Prepare data.scaled with cells as rows and features as columns
+  data.scaled <- as.data.frame(t(smoothed_data))
+  data.scaled$barcode <- rownames(data.scaled)
+  
+  # Add metadata to data.scaled by matching barcodes
+  data.scaled <- data.scaled %>%
+    dplyr::left_join(peaks.data.ss[, c("barcode", "label", "pseudotime")], by = "barcode")
+  
+  # Adjust data based on GABA value and subset AFTER smoothing
+  if (GABA) {
+    ga_labels <- unique(data.scaled$label[grepl("^GA", data.scaled$label)])
     ga_labels <- ga_labels[order(as.numeric(sub("GA", "", ga_labels)))]
     included_labels <- c("PRO1", "PRO2", "CO1", "CO2", ga_labels)
   } else {
-    gl_labels <- unique(peaks.data.ss$label[grepl("^GL", peaks.data.ss$label)])
+    gl_labels <- unique(data.scaled$label[grepl("^GL", data.scaled$label)])
     gl_labels <- gl_labels[order(as.numeric(sub("GL", "", gl_labels)))]
     included_labels <- c("PRO1", "PRO2", "CO1", "CO2", gl_labels)
   }
   
   # Subset the data for included labels
-  data_subset <- peaks.data.ss %>% filter(label %in% included_labels)
+  data_subset <- data.scaled %>% dplyr::filter(label %in% included_labels)
   
   # Ensure labels are factors with levels in the desired order
   data_subset$label <- factor(data_subset$label, levels = included_labels)
   
-  # Prepare covariate data
-  cov.data <- dplyr::select(data_subset, ends_with("_rolled"))
+  # Prepare covariate data for the subset
+  cov.data <- peaks.data.ss %>%
+    dplyr::filter(barcode %in% data_subset$barcode) %>%
+    dplyr::select(ends_with("_rolled"))
   colnames(cov.data) <- covariate.genes.to.plot
   
   # Compute unified color scale for covariates if requested
@@ -1683,10 +1721,15 @@ plotSmoothedAccessibility_v2 <- function(
     min_cov_value <- min(cov.data, na.rm = TRUE)
     max_cov_value <- max(cov.data, na.rm = TRUE)
     
+    # Generate breaks and colors
+    n_colors <- 100
+    breaks_cov <- seq(min_cov_value, max_cov_value, length.out = n_colors)
+    colors_cov <- colorRampPalette(c("white", "orange"))(n_colors)
+    
     # Create a unified color function from min_cov_value to max_cov_value
-    unified_col_fun <- colorRamp2(
-      c(min_cov_value, max_cov_value),
-      c("white", "orange")
+    unified_col_fun <- circlize::colorRamp2(
+      breaks = breaks_cov,
+      colors = colors_cov
     )
     
     # Create a list where each covariate uses the same color function
@@ -1712,12 +1755,12 @@ plotSmoothedAccessibility_v2 <- function(
     annotation_legend_param_list <- list()
     annotation_legend_param_list[[covariate.genes.to.plot[1]]] <- annotation_legend_param
     
-    ha.top <- HeatmapAnnotation(
+    ha.top <- ComplexHeatmap::HeatmapAnnotation(
       df = cov.data,
       annotation_label = covariate.genes.to.plot,
       col = expression_col_fun,
-      simple_anno_size = unit(3, "cm"),
-      height = unit(8, "cm"),
+      simple_anno_size = grid::unit(3, "cm"),
+      height = grid::unit(8, "cm"),
       annotation_name_gp = grid::gpar(fontsize = 20),
       gp = grid::gpar(fontsize = 20),
       show_legend = show_legend_vector,
@@ -1729,66 +1772,61 @@ plotSmoothedAccessibility_v2 <- function(
       gene <- covariate.genes.to.plot[i]
       min_expr <- min(cov.data[[i]], na.rm = TRUE)
       max_expr <- max(cov.data[[i]], na.rm = TRUE)
-      colorRamp2(
-        c(min_expr, max_expr),
-        c("white", "orange")
+      
+      # Generate breaks and colors
+      n_colors <- 100
+      breaks_expr <- seq(min_expr, max_expr, length.out = n_colors)
+      colors_expr <- colorRampPalette(c("white", "orange"))(n_colors)
+      
+      circlize::colorRamp2(
+        breaks = breaks_expr,
+        colors = colors_expr
       )
     })
     names(expression_col_fun) <- covariate.genes.to.plot
     
-    ha.top <- HeatmapAnnotation(
+    ha.top <- ComplexHeatmap::HeatmapAnnotation(
       df = cov.data,
       annotation_label = covariate.genes.to.plot,
       col = expression_col_fun,
-      simple_anno_size = unit(3, "cm"),
-      height = unit(8, "cm"),
+      simple_anno_size = grid::unit(3, "cm"),
+      height = grid::unit(8, "cm"),
       annotation_name_gp = grid::gpar(fontsize = 20),
       gp = grid::gpar(fontsize = 20)
       # Note: Legends for individual covariates are handled automatically
     )
   }
   
-  # Scale and smooth main heatmap data
-  data.scaled.tmp <- dplyr::select(data_subset, all_of(features.to.show)) %>%
-    as.matrix() %>% scale(scale = TRUE, center = TRUE)
-  data.scaled.tmp[!is.finite(data.scaled.tmp)] <- 0
-  
-  data.scaled <- apply(data.scaled.tmp, MARGIN = 2, FUN = function(vec) {
-    smoo <- smooth.spline(vec, cv = FALSE, penalty = 0.8)
-    smoo$y
-  })
-  rownames(data.scaled) <- data_subset$barcode
-  
-  # Adjust the data to ensure it falls within the desired range
-  data.scaled <- t(data.scaled) + 1  # Transpose and shift data as before
-  
   # Prepare annotations
   labels <- data_subset$label
   
   # Define ha.bot here (make sure ha.bot is defined before use)
-  ha.bot <- HeatmapAnnotation(
+  ha.bot <- ComplexHeatmap::HeatmapAnnotation(
     pseudotime = data_subset$pseudotime,
     col = cols_pseudotime,
     show_legend = FALSE,
     annotation_name_gp = grid::gpar(fontsize = 20),
-    simple_anno_size = unit(2, "cm")
+    simple_anno_size = grid::unit(2, "cm")
   )
   
   # Handle values above max_accessibility_value based on the new argument
   if (assign_above_max_to_white) {
-    # Do not cap the data
+    # Assign NA to values above max_accessibility_value
+    data_subset[, features.to.show][data_subset[, features.to.show] > max_accessibility_value] <- NA
+    
     # Set minimum value for the color mapping to 0
     min_accessibility_value <- 0
-    max_data_value <- max(data.scaled, na.rm = TRUE)
     
-    # Create a color mapping function for Accessibility from 0 to max_accessibility_value
-    accessibility_col_fun <- colorRamp2(
-      seq(min_accessibility_value, max_accessibility_value, length.out = 100),
-      viridis::plasma(100)
+    # Generate breaks and colors
+    n_colors <- 100
+    breaks_accessibility <- seq(min_accessibility_value, max_accessibility_value, length.out = n_colors)
+    colors_accessibility <- viridis::plasma(n_colors)
+    
+    # Create a color mapping function for Accessibility
+    accessibility_col_fun <- circlize::colorRamp2(
+      breaks = breaks_accessibility,
+      colors = colors_accessibility
     )
-    
-    # Assign NA to values above max_accessibility_value
-    data.scaled[data.scaled > max_accessibility_value] <- NA
     
     # Set na_col to "white" in the Heatmap
     na_col_value <- "white"
@@ -1802,15 +1840,20 @@ plotSmoothedAccessibility_v2 <- function(
     )
   } else {
     # Cap the data at max_accessibility_value
-    data.scaled[data.scaled > max_accessibility_value] <- max_accessibility_value
+    data_subset[, features.to.show][data_subset[, features.to.show] > max_accessibility_value] <- max_accessibility_value
     
     # Set minimum value for the color mapping to 0
     min_accessibility_value <- 0
     
-    # Create a color mapping function for Accessibility from 0 to max_accessibility_value
-    accessibility_col_fun <- colorRamp2(
-      seq(min_accessibility_value, max_accessibility_value, length.out = 100),
-      viridis::plasma(100)
+    # Generate breaks and colors
+    n_colors <- 100
+    breaks_accessibility <- seq(min_accessibility_value, max_accessibility_value, length.out = n_colors)
+    colors_accessibility <- viridis::plasma(n_colors)
+    
+    # Create a color mapping function for Accessibility
+    accessibility_col_fun <- circlize::colorRamp2(
+      breaks = breaks_accessibility,
+      colors = colors_accessibility
     )
     
     # No NA values, so set na_col to default
@@ -1825,8 +1868,8 @@ plotSmoothedAccessibility_v2 <- function(
   }
   
   # Create heatmap
-  p <- Heatmap(
-    data.scaled,
+  p <- ComplexHeatmap::Heatmap(
+    t(as.matrix(data_subset[, features.to.show])),
     name = "Accessibility",
     show_column_names = FALSE,
     show_row_names = TRUE,
@@ -1848,7 +1891,7 @@ plotSmoothedAccessibility_v2 <- function(
   )
   
   # Draw the heatmap directly within the function
-  draw(
+  ComplexHeatmap::draw(
     p,
     heatmap_legend_side = "right",
     annotation_legend_side = "right"
