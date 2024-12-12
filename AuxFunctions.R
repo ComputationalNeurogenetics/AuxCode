@@ -1572,6 +1572,7 @@ plotSmoothedAccessibility_v2 <- function(
     gene.feat.name,
     gene_id2name,
     gene_name2id,
+    cluster.rows=FALSE,
     GABA = TRUE,                      # Changed argument name from rV2 to GABA
     drop.non.linked = FALSE,
     unify_expression_scale = FALSE,
@@ -1876,7 +1877,7 @@ plotSmoothedAccessibility_v2 <- function(
     row_labels = feature_labels,
     bottom_annotation = ha.bot,
     top_annotation = ha.top,
-    cluster_rows = FALSE,
+    cluster_rows = cluster.rows,
     row_order = features.to.show,
     cluster_columns = FALSE,
     column_split = data_subset$label,
