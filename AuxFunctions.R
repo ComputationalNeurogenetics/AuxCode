@@ -2299,8 +2299,7 @@ fetchGRangesLinks <- function(db_path, zscore_threshold = 2, pvalue_threshold = 
     "SELECT seqnames, start, end, strand, score, ensg_id AS gene, feature AS peak, zscore, pvalue ",
     "FROM links_s WHERE ", where_clause
   )
-  print(query)  # Ensure this prints only once
-  
+
   links_data <- dbGetQuery(con, query)
   dbDisconnect(con)
   
