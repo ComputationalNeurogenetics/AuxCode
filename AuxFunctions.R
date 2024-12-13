@@ -2269,48 +2269,44 @@ PlotRNAFeature <- function(s.data,feature){
   return(f.p)
 }
 
-# Function to fetch links data and construct GRanges with coordinate filtering
-fetchGRangesLinks <- function(db_path, zscore_threshold = 2, pvalue_threshold = 0.01, coordinate_filter = NULL) {
-  # Connect to SQLite database
+fetchGRangesLinks <- function(db_path, zscore_threshold = 2, pvalue_threshold = 0.01, coordinate_filter = NULL, target.gene_name = NULL) {
   con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
   
-  # Initialize the WHERE clause
+  # Resolve target.gene_name to ensg_id
+  ensg_id <- DBI::dbGetQuery(con, paste0(
+    "SELECT ensg_id FROM gene_metadata WHERE gene_name = '", target.gene_name, "';"
+  ))
+  if (nrow(ensg_id) == 0) stop("Target gene not found in gene_metadata table.")
+  ensg_id <- ensg_id$ensg_id[1]
+  
+  # Construct WHERE clause
   where_clause <- paste0(
-    "ABS(zscore) >= ", zscore_threshold, 
+    "ensg_id = '", ensg_id, "' AND ABS(zscore) >= ", zscore_threshold,
     " AND pvalue <= ", pvalue_threshold
   )
   
-  # Add coordinate filter if provided
   if (!is.null(coordinate_filter)) {
     coord_parts <- strsplit(coordinate_filter, "[-:]")[[1]]
-    if (length(coord_parts) != 3) {
-      stop("Invalid coordinate format. Use 'chrN-start-end'.")
-    }
-    
+    if (length(coord_parts) != 3) stop("Invalid coordinate format. Use 'chrN-start-end'.")
     chr <- coord_parts[1]
     start <- as.numeric(coord_parts[2])
     end <- as.numeric(coord_parts[3])
-    
-    coord_filter <- paste0(
-      "seqnames = '", chr, "' AND start >= ", start, " AND end <= ", end
-    )
-    where_clause <- paste0(where_clause, " AND ", coord_filter)
+    where_clause <- paste0(where_clause, " AND seqnames = '", chr, "' AND start >= ", start, " AND end <= ", end)
   }
   
-  # Query the links_s table with thresholds and optional coordinate filter
+  # Single query construction and execution
   query <- paste0(
     "SELECT seqnames, start, end, strand, score, ensg_id AS gene, feature AS peak, zscore, pvalue ",
-    "FROM links_s ",
-    "WHERE ", where_clause
+    "FROM links_s WHERE ", where_clause
   )
+  print(query)  # Ensure this prints only once
   
-  # Fetch data
   links_data <- dbGetQuery(con, query)
-  
-  # Ensure the database connection is closed
   dbDisconnect(con)
   
-  # Construct GRanges object
+  if (nrow(links_data) == 0) stop("No data found matching the query.")
+  
+  # Construct GRanges
   gr <- GRanges(
     seqnames = Rle(links_data$seqnames),
     ranges = IRanges(start = links_data$start, end = links_data$end),
