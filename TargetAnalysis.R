@@ -593,6 +593,7 @@ getTargets_rV2_feature_level <- function(TF_name,con){
     tb.GA1_2_score / NULLIF(tb.PRO1_2_score, 0) AS PRO1_2_GA_FT_ratio,
     tb.GL1_2_score / NULLIF(tb.PRO1_2_score, 0) AS PRO1_2_GL_FT_ratio,
     li.zscore,
+    li.pvalue AS links_pvalue,
     ABS(((li.end+li.start)/2)-gm.TSS_start) AS linkage_dist
     
 FROM 
